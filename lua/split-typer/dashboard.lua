@@ -1,24 +1,11 @@
 local errors = require("split-typer.errors")
+local storage = require("split-typer.storage")
 
 local M = {}
 
 -- Load history from disk
 local function load_history()
-  local path = vim.fn.stdpath("data") .. "/split-typer/history.json"
-  local f = io.open(path, "r")
-  if not f then
-    return {}
-  end
-  local content = f:read("*a")
-  f:close()
-  if not content or #content == 0 then
-    return {}
-  end
-  local ok, data = pcall(vim.json.decode, content)
-  if ok and type(data) == "table" then
-    return data
-  end
-  return {}
+  return storage.read_json(storage.data_path("history.json"), {})
 end
 
 -- Render an ASCII chart from a list of values.

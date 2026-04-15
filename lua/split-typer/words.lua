@@ -110,6 +110,7 @@ local raw = table.concat({
 
 -- Parsed word list (lazy init)
 local _words = nil
+local _filter_cache = {}
 
 local function get_all_words()
   if _words then
@@ -145,6 +146,11 @@ end
 --- @param chars string Allowed characters (e.g. "asdfjkl")
 --- @return string[] Matching words
 function M.filter(chars)
+  local cached = _filter_cache[chars]
+  if cached then
+    return cached
+  end
+
   local set = make_set(chars)
   local result = {}
   for _, w in ipairs(get_all_words()) do
@@ -152,6 +158,7 @@ function M.filter(chars)
       result[#result + 1] = w
     end
   end
+  _filter_cache[chars] = result
   return result
 end
 

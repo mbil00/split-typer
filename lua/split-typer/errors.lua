@@ -1,10 +1,10 @@
+local storage = require("split-typer.storage")
 local words = require("split-typer.words")
 
 local M = {}
 
 -- Persistence
-local data_dir = vim.fn.stdpath("data") .. "/split-typer"
-local errors_file = data_dir .. "/errors.json"
+local errors_file = storage.data_path("errors.json")
 
 local _data = nil
 
@@ -14,26 +14,13 @@ local function load_data()
     return _data
   end
 
-  local f = io.open(errors_file, "r")
-  if f then
-    local content = f:read("*a")
-    f:close()
-    if content and #content > 0 then
-      local ok, parsed = pcall(vim.json.decode, content)
-      if ok and type(parsed) == "table" then
-        _data = parsed
-        return _data
-      end
-    end
-  end
-
-  _data = {
+  _data = storage.read_json(errors_file, {
     chars = {},
     bigrams = {},
     total_chars = 0,
     total_errors = 0,
     last_updated = "",
-  }
+  })
   return _data
 end
 
@@ -42,12 +29,7 @@ local function save_data()
   if not _data then
     return
   end
-  vim.fn.mkdir(data_dir, "p")
-  local f = io.open(errors_file, "w")
-  if f then
-    f:write(vim.json.encode(_data))
-    f:close()
-  end
+  storage.write_json(errors_file, _data)
 end
 
 --- Record errors from a completed exercise session.

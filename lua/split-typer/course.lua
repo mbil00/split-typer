@@ -1,3 +1,4 @@
+local storage = require("split-typer.storage")
 local words = require("split-typer.words")
 
 local M = {}
@@ -154,8 +155,7 @@ M.levels = {
 }
 
 -- Progress persistence
-local data_dir = vim.fn.stdpath("data") .. "/split-typer"
-local progress_file = data_dir .. "/progress.json"
+local progress_file = storage.data_path("progress.json")
 
 local _progress = nil
 
@@ -166,20 +166,7 @@ function M.load_progress()
     return _progress
   end
 
-  local f = io.open(progress_file, "r")
-  if f then
-    local content = f:read("*a")
-    f:close()
-    if content and #content > 0 then
-      local ok, data = pcall(vim.json.decode, content)
-      if ok and type(data) == "table" then
-        _progress = data
-        return _progress
-      end
-    end
-  end
-
-  _progress = { current_level = 1, levels = {} }
+  _progress = storage.read_json(progress_file, { current_level = 1, levels = {} })
   return _progress
 end
 
@@ -188,12 +175,7 @@ function M.save_progress()
   if not _progress then
     return
   end
-  vim.fn.mkdir(data_dir, "p")
-  local f = io.open(progress_file, "w")
-  if f then
-    f:write(vim.json.encode(_progress))
-    f:close()
-  end
+  storage.write_json(progress_file, _progress)
 end
 
 --- Get progress for a specific level.
@@ -316,6 +298,7 @@ function generate_mastery_exercise(level)
   -- Mix of words, number sequences, and symbol patterns
   local parts = {}
   local num_parts = math.random(12, 18)
+  local word_pool = words.filter("abcdefghijklmnopqrstuvwxyz")
 
   local symbol_patterns = {
     "()", "{}", "[]", "<>", "!=", "==", "+=", "->", "=>", "||",
@@ -334,9 +317,8 @@ function generate_mastery_exercise(level)
     local roll = math.random()
     if roll < 0.55 then
       -- Regular word
-      local pool = words.filter("abcdefghijklmnopqrstuvwxyz")
-      if #pool > 0 then
-        parts[i] = pool[math.random(1, #pool)]
+      if #word_pool > 0 then
+        parts[i] = word_pool[math.random(1, #word_pool)]
       else
         parts[i] = words.combo("abcdefghijklmnopqrstuvwxyz", math.random(3, 6))
       end
