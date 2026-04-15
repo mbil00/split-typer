@@ -1156,6 +1156,9 @@ function M.show_dashboard(ctx)
   dashboard.render(state.buf, state.ns, state.win, {
     on_back = ctx.actions.show_menu,
     on_quit = ctx.actions.cleanup,
+    map = function(key, fn)
+      ctx.window.map(state, key, fn)
+    end,
     on_reset_errors = function()
       ctx.errs.reset()
       M.show_dashboard(ctx)

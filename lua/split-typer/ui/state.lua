@@ -51,6 +51,47 @@ M.state = {
   mapped_keys = {},
 }
 
+local function reset_session_state(state)
+  state.target = nil
+  state.char_map = nil
+  state.input = {}
+  state.pos = 0
+  state.correct_count = 0
+  state.error_count = 0
+  state.keystroke_count = 0
+  state.backspace_count = 0
+  state.start_time = nil
+  state.end_time = nil
+  state.finished = false
+  state.no_backspace = false
+  state.error_limit = nil
+  state.repeat_until_clean = false
+  state.fail_reason = nil
+  state.failed_early = false
+  state.streak = 0
+  state.best_streak = 0
+  state.error_log = {}
+  state.key_events = {}
+  state.header_extmark = nil
+  state.timed_mode = false
+  state.timed_duration = 0
+  state.timed_deadline = nil
+  state.chunk_generator = nil
+  state.combo_mode = false
+  state.combos = nil
+  state.combo_idx = 0
+  state.combo_results = {}
+  state.combo_feedback = nil
+  state.combo_waiting = false
+  state.reaction_mode = false
+  state.reaction_prompts = nil
+  state.reaction_idx = 0
+  state.reaction_results = {}
+  state.reaction_feedback = nil
+  state.reaction_waiting = false
+  state.reaction_prompt_started_at = nil
+end
+
 function M.build_char_map(text)
   local chars = {}
   local lines = vim.split(text, "\n")
@@ -80,6 +121,7 @@ end
 
 function M.reset_typing_session(state, text, opts)
   opts = opts or {}
+  reset_session_state(state)
   state.target = text
   state.char_map = M.build_char_map(text)
   state.category_id = opts.category_id
@@ -87,122 +129,27 @@ function M.reset_typing_session(state, text, opts)
   state.no_backspace = opts.no_backspace or false
   state.error_limit = opts.error_limit
   state.repeat_until_clean = opts.repeat_until_clean or false
-  state.fail_reason = nil
-  state.failed_early = false
-  state.combo_mode = false
-  state.combos = nil
-  state.combo_idx = 0
-  state.combo_results = {}
-  state.combo_feedback = nil
-  state.combo_waiting = false
-  state.reaction_mode = false
-  state.reaction_prompts = nil
-  state.reaction_idx = 0
-  state.reaction_results = {}
-  state.reaction_feedback = nil
-  state.reaction_waiting = false
-  state.reaction_prompt_started_at = nil
-  state.input = {}
-  state.pos = 0
-  state.correct_count = 0
-  state.error_count = 0
-  state.keystroke_count = 0
-  state.backspace_count = 0
-  state.start_time = nil
-  state.end_time = nil
-  state.finished = false
-  state.streak = 0
-  state.best_streak = 0
-  state.error_log = {}
-  state.key_events = {}
-  state.header_extmark = nil
   state.timed_mode = opts.timed_mode or false
   state.timed_duration = opts.timed_duration or 0
-  state.timed_deadline = nil
   state.chunk_generator = opts.chunk_generator
 end
 
 function M.reset_combo_session(state, category_id, combos)
+  reset_session_state(state)
   state.category_id = category_id
   state.combo_mode = true
   state.combos = combos
   state.combo_idx = 1
-  state.combo_results = {}
-  state.combo_feedback = nil
-  state.combo_waiting = false
-  state.reaction_mode = false
-  state.reaction_prompts = nil
-  state.reaction_idx = 0
-  state.reaction_results = {}
-  state.reaction_feedback = nil
-  state.reaction_waiting = false
-  state.reaction_prompt_started_at = nil
-  state.target = nil
-  state.char_map = nil
-  state.input = {}
-  state.pos = 0
-  state.correct_count = 0
-  state.error_count = 0
-  state.keystroke_count = 0
-  state.backspace_count = 0
-  state.start_time = nil
-  state.end_time = nil
-  state.finished = false
-  state.error_limit = nil
-  state.repeat_until_clean = false
-  state.fail_reason = nil
-  state.failed_early = false
-  state.streak = 0
-  state.best_streak = 0
-  state.error_log = {}
-  state.key_events = {}
-  state.header_extmark = nil
-  state.timed_mode = false
-  state.timed_duration = 0
-  state.timed_deadline = nil
-  state.chunk_generator = nil
 end
 
 function M.reset_reaction_session(state, category_id, prompts)
+  reset_session_state(state)
   state.category_id = category_id
   state.reaction_mode = true
   state.reaction_prompts = prompts
   state.reaction_idx = 1
-  state.reaction_results = {}
-  state.reaction_feedback = nil
-  state.reaction_waiting = false
   state.reaction_prompt_started_at = vim.uv.hrtime()
-  state.combo_mode = false
-  state.combos = nil
-  state.combo_idx = 0
-  state.combo_results = {}
-  state.combo_feedback = nil
-  state.combo_waiting = false
-  state.target = nil
-  state.char_map = nil
-  state.input = {}
-  state.pos = 0
-  state.correct_count = 0
-  state.error_count = 0
-  state.keystroke_count = 0
-  state.backspace_count = 0
-  state.start_time = nil
-  state.end_time = nil
-  state.finished = false
   state.no_backspace = true
-  state.error_limit = nil
-  state.repeat_until_clean = false
-  state.fail_reason = nil
-  state.failed_early = false
-  state.streak = 0
-  state.best_streak = 0
-  state.error_log = {}
-  state.key_events = {}
-  state.header_extmark = nil
-  state.timed_mode = false
-  state.timed_duration = 0
-  state.timed_deadline = nil
-  state.chunk_generator = nil
 end
 
 function M.get_stats(state)

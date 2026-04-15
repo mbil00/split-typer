@@ -172,6 +172,12 @@ local progress_file = storage.data_path("progress.json")
 
 local _progress = nil
 
+local function warn_save_failure()
+  vim.schedule(function()
+    vim.notify("split-typer: failed to save course progress", vim.log.levels.WARN)
+  end)
+end
+
 local function required_consecutive(level)
   if level.req_consecutive then
     return level.req_consecutive
@@ -195,7 +201,9 @@ function M.save_progress()
   if not _progress then
     return
   end
-  storage.write_json(progress_file, _progress)
+  if not storage.write_json(progress_file, _progress) then
+    warn_save_failure()
+  end
 end
 
 --- Get progress for a specific level.

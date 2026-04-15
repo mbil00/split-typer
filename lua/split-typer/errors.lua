@@ -8,6 +8,12 @@ local errors_file = storage.data_path("errors.json")
 
 local _data = nil
 
+local function warn_save_failure(kind)
+  vim.schedule(function()
+    vim.notify("split-typer: failed to save " .. kind, vim.log.levels.WARN)
+  end)
+end
+
 --- Load error data from disk.
 local function load_data()
   if _data then
@@ -29,7 +35,9 @@ local function save_data()
   if not _data then
     return
   end
-  storage.write_json(errors_file, _data)
+  if not storage.write_json(errors_file, _data) then
+    warn_save_failure("error statistics")
+  end
 end
 
 local function make_set(chars)

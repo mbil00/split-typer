@@ -40,7 +40,12 @@ local function set_buffer_text(text)
 end
 
 local function append_history(entry)
-  storage.append_capped(stats_file, entry, 500)
+  local _, ok = storage.append_capped(stats_file, entry, 500)
+  if ok == false then
+    vim.schedule(function()
+      vim.notify("split-typer: failed to save session history", vim.log.levels.WARN)
+    end)
+  end
 end
 
 local function get_typed_char_map()

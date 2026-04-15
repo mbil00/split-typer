@@ -8,6 +8,19 @@ local function load_history()
   return storage.read_json(storage.data_path("history.json"), {})
 end
 
+local function format_number(n)
+  local s = tostring(math.floor(n))
+  local result = ""
+  local len = #s
+  for i = 1, len do
+    if i > 1 and (len - i + 1) % 3 == 0 then
+      result = result .. ","
+    end
+    result = result .. s:sub(i, i)
+  end
+  return result
+end
+
 local function get_timed_history(history)
   local timed = {}
   for _, item in ipairs(history) do
@@ -136,7 +149,7 @@ end
 --- @param buf number
 --- @param ns number
 --- @param win number
---- @param opts { on_back: function, on_quit: function, on_reset_errors: function }
+--- @param opts { on_back: function, on_quit: function, on_reset_errors: function, map: function }
 function M.render(buf, ns, win, opts)
   local history = load_history()
   local err_summary = errors.get_summary()
@@ -519,31 +532,12 @@ function M.render(buf, ns, win, opts)
     })
   end
 
-  -- Keymaps
-  local map = function(key, fn)
-    vim.keymap.set("n", key, fn, { buffer = buf, nowait = true, silent = true })
-  end
-
-  map("<Esc>", opts.on_back)
-  map("q", opts.on_quit)
-  map("<C-c>", opts.on_quit)
-  map("R", function()
+  opts.map("<Esc>", opts.on_back)
+  opts.map("q", opts.on_quit)
+  opts.map("<C-c>", opts.on_quit)
+  opts.map("R", function()
     opts.on_reset_errors()
   end)
-end
-
--- Format a number with comma separators
-function format_number(n)
-  local s = tostring(math.floor(n))
-  local result = ""
-  local len = #s
-  for i = 1, len do
-    if i > 1 and (len - i + 1) % 3 == 0 then
-      result = result .. ","
-    end
-    result = result .. s:sub(i, i)
-  end
-  return result
 end
 
 return M
