@@ -4,13 +4,17 @@ local errs = require("split-typer.errors")
 
 local M = {}
 
+-- Stats persistence paths (declared early so all functions can access)
+local stats_dir = vim.fn.stdpath("data") .. "/split-typer"
+local stats_file = stats_dir .. "/history.json"
+
 -- State
 local state = {
   buf = nil,
   win = nil,
   ns = nil,
   timer = nil,
-  screen = nil, -- "menu", "exercise", "results", "course", "course_results"
+  screen = nil, -- "menu", "exercise", "results", "course", "course_results", "combo_menu", "combo_exercise", "combo_results"
   category_id = nil,
   exercise_idx = nil,
   -- Mode: "freeplay" or "course"
@@ -32,6 +36,13 @@ local state = {
   error_log = {},
   -- Stats display extmark id
   header_extmark = nil,
+  -- Combo mode state
+  combo_mode = false,
+  combos = nil,
+  combo_idx = 0,
+  combo_results = {},
+  combo_feedback = nil,
+  combo_waiting = false,
 }
 
 -- Highlight groups
@@ -237,6 +248,16 @@ local function clear_keymaps()
   end
   for _, k in ipairs({ "<CR>", "<BS>", "<Tab>", "<Esc>", "<C-c>", "<Up>", "<Down>", "<Left>", "<Right>", "<C-w>" }) do
     pcall(vim.keymap.del, "n", k, { buffer = state.buf })
+  end
+  -- Clear modifier key combos (for combo exercise mode)
+  for ch = string.byte("a"), string.byte("z") do
+    local c = string.char(ch)
+    pcall(vim.keymap.del, "n", "<C-" .. c .. ">", { buffer = state.buf })
+    pcall(vim.keymap.del, "n", "<A-" .. c .. ">", { buffer = state.buf })
+  end
+  for i = 0, 9 do
+    pcall(vim.keymap.del, "n", "<C-" .. i .. ">", { buffer = state.buf })
+    pcall(vim.keymap.del, "n", "<A-" .. i .. ">", { buffer = state.buf })
   end
 end
 
@@ -926,13 +947,685 @@ function M.show_course_results()
 end
 
 -- ============================================================
+-- Combo (modifier key) mode
+-- ============================================================
+
+-- Convert Neovim keymap notation to human-readable display name
+local function combo_display_name(keymap)
+  local inner = keymap:match("^<(.+)>$")
+  if inner then
+    local parts = {}
+    local key = inner
+    while true do
+      local mod, rest = key:match("^([CASM])%-(.+)$")
+      if mod then
+        local mod_names = { C = "Ctrl", A = "Alt", S = "Shift", M = "Meta" }
+        parts[#parts + 1] = mod_names[mod] or mod
+        key = rest
+      else
+        break
+      end
+    end
+    if #parts > 0 then
+      parts[#parts + 1] = key:upper()
+      return table.concat(parts, " + ")
+    end
+    local specials = { Space = "Space", CR = "Enter", BS = "Backspace", Tab = "Tab" }
+    return specials[inner] or inner
+  end
+  if #keymap == 1 and keymap:match("[A-Z]") then
+    return "Shift + " .. keymap
+  end
+  return keymap
+end
+
+-- Set up keymaps for combo exercise mode
+local function setup_combo_keymaps()
+  -- Map Ctrl+letter (skip problematic ones)
+  local skip_ctrl = { c = true, h = true, i = true, j = true, m = true, q = true, s = true, z = true }
+  for ch_code = string.byte("a"), string.byte("z") do
+    local ch = string.char(ch_code)
+    if not skip_ctrl[ch] then
+      local km = "<C-" .. ch .. ">"
+      map(km, function()
+        handle_combo_input(km)
+      end)
+    end
+  end
+
+  -- Map Alt+letter
+  for ch_code = string.byte("a"), string.byte("z") do
+    local ch = string.char(ch_code)
+    local km = "<A-" .. ch .. ">"
+    map(km, function()
+      handle_combo_input(km)
+    end)
+  end
+
+  -- Map Ctrl+number
+  for i = 0, 9 do
+    local km = "<C-" .. i .. ">"
+    map(km, function()
+      handle_combo_input(km)
+    end)
+  end
+
+  -- Map Alt+number
+  for i = 0, 9 do
+    local km = "<A-" .. i .. ">"
+    map(km, function()
+      handle_combo_input(km)
+    end)
+  end
+
+  -- Map plain letters and numbers (to detect missing modifier)
+  for ch_code = string.byte("a"), string.byte("z") do
+    local ch = string.char(ch_code)
+    map(ch, function()
+      handle_combo_input(ch)
+    end)
+  end
+  for ch_code = string.byte("A"), string.byte("Z") do
+    local ch = string.char(ch_code)
+    map(ch, function()
+      handle_combo_input(ch)
+    end)
+  end
+  for i = 0, 9 do
+    local ch = tostring(i)
+    map(ch, function()
+      handle_combo_input(ch)
+    end)
+  end
+
+  -- Map common special chars (to detect wrong presses)
+  local specials = "`~!@#$%^&*()-_=+[{]}\\|;:'\",<.>/?"
+  for i = 1, #specials do
+    local c = specials:sub(i, i)
+    local lhs = c
+    if c == "|" then
+      lhs = "<Bar>"
+    elseif c == "\\" then
+      lhs = "<Bslash>"
+    elseif c == "<" then
+      lhs = "<lt>"
+    end
+    map(lhs, function()
+      handle_combo_input(c)
+    end)
+  end
+
+  map("<Space>", function()
+    handle_combo_input("<Space>")
+  end)
+  map("<CR>", function()
+    handle_combo_input("<CR>")
+  end)
+  map("<BS>", function()
+    handle_combo_input("<BS>")
+  end)
+  map("<Tab>", function()
+    handle_combo_input("<Tab>")
+  end)
+
+  -- Navigation (always available)
+  map("<Esc>", function()
+    M.show_combo_menu()
+  end)
+  map("<C-c>", function()
+    M.cleanup()
+  end)
+
+  -- Disable arrow keys
+  for _, k in ipairs({ "<Up>", "<Down>", "<Left>", "<Right>", "<C-w>" }) do
+    map(k, function() end)
+  end
+end
+
+-- Get combo-specific stats
+local function get_combo_stats()
+  if not state.start_time then
+    return {
+      cpm = 0, accuracy = 100, time = 0, score = 0, errors = 0,
+      correct = 0, total = 0, completed = 0,
+      streak = 0, best_streak = 0, keystrokes = 0,
+    }
+  end
+
+  local end_t = state.end_time or vim.uv.hrtime()
+  local elapsed = (end_t - state.start_time) / 1e9
+
+  local completed = 0
+  local correct = 0
+  for _, r in pairs(state.combo_results) do
+    completed = completed + 1
+    if r.correct then
+      correct = correct + 1
+    end
+  end
+
+  local accuracy = completed > 0 and (correct / completed * 100) or 100
+  local cpm = elapsed > 0 and (completed / (elapsed / 60)) or 0
+  local score = math.floor(cpm * (accuracy / 100) * (accuracy / 100))
+
+  return {
+    cpm = math.floor(cpm),
+    accuracy = math.floor(accuracy * 10) / 10,
+    time = elapsed,
+    score = score,
+    errors = state.error_count,
+    correct = correct,
+    total = #state.combos,
+    completed = completed,
+    keystrokes = state.keystroke_count,
+    streak = state.streak,
+    best_streak = state.best_streak,
+  }
+end
+
+-- Handle a keypress during combo exercise
+function handle_combo_input(keymap)
+  if state.finished or state.combo_waiting then
+    return
+  end
+  if state.combo_idx < 1 or state.combo_idx > #state.combos then
+    return
+  end
+
+  if not state.start_time then
+    state.start_time = vim.uv.hrtime()
+  end
+
+  state.keystroke_count = state.keystroke_count + 1
+
+  local expected = state.combos[state.combo_idx]
+  local is_correct = (keymap == expected.key)
+
+  if is_correct then
+    state.streak = state.streak + 1
+    if state.streak > state.best_streak then
+      state.best_streak = state.streak
+    end
+  else
+    state.error_count = state.error_count + 1
+    state.streak = 0
+    state.error_log[#state.error_log + 1] = {
+      expected = expected.key,
+      expected_display = expected.display,
+      actual = keymap,
+      actual_display = combo_display_name(keymap),
+    }
+  end
+
+  state.combo_results[state.combo_idx] = {
+    correct = is_correct,
+    actual = keymap,
+  }
+
+  state.combo_feedback = {
+    correct = is_correct,
+    actual_display = combo_display_name(keymap),
+    expected_display = expected.display,
+  }
+  update_combo_display()
+
+  -- Advance after brief delay
+  state.combo_waiting = true
+  local delay = is_correct and 350 or 800
+
+  vim.defer_fn(function()
+    state.combo_waiting = false
+
+    if state.combo_idx >= #state.combos then
+      state.finished = true
+      state.end_time = vim.uv.hrtime()
+      vim.defer_fn(function()
+        save_combo_stats()
+        M.show_combo_results()
+      end, 200)
+    else
+      state.combo_idx = state.combo_idx + 1
+      state.combo_feedback = nil
+      update_combo_display()
+    end
+  end, delay)
+end
+
+-- Update the combo exercise display
+function update_combo_display()
+  if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
+    return
+  end
+  if not state.ns then
+    return
+  end
+
+  local cat = exercises.get_combo_category(state.category_id)
+  local cat_name = cat and cat.name or "Combo Trainer"
+  local combo = state.combos[state.combo_idx]
+  local total = #state.combos
+
+  local completed = 0
+  local correct = 0
+  for _, r in pairs(state.combo_results) do
+    completed = completed + 1
+    if r.correct then
+      correct = correct + 1
+    end
+  end
+
+  vim.bo[state.buf].modifiable = true
+
+  local win_width = 80
+  pcall(function()
+    win_width = vim.api.nvim_win_get_width(state.win)
+  end)
+
+  local lines = {}
+  local highlights = {}
+
+  for _ = 1, 5 do
+    lines[#lines + 1] = ""
+  end
+
+  -- Combo display (centered)
+  local display = combo.display
+  local combo_line_idx = #lines
+  if state.combo_feedback then
+    if state.combo_feedback.correct then
+      local text = display .. "  \u{2713}"
+      local pad = math.max(0, math.floor((win_width - #text) / 2))
+      lines[#lines + 1] = string.rep(" ", pad) .. text
+      highlights[#highlights + 1] = { combo_line_idx, pad, pad + #text, "SplitTyperGood" }
+    else
+      local text = display .. "  \u{2717}"
+      local pad = math.max(0, math.floor((win_width - #text) / 2))
+      lines[#lines + 1] = string.rep(" ", pad) .. text
+      highlights[#highlights + 1] = { combo_line_idx, pad, pad + #text, "SplitTyperBad" }
+      lines[#lines + 1] = ""
+      local you_pressed = "You pressed: " .. state.combo_feedback.actual_display
+      local pad2 = math.max(0, math.floor((win_width - #you_pressed) / 2))
+      lines[#lines + 1] = string.rep(" ", pad2) .. you_pressed
+      highlights[#highlights + 1] = { #lines - 1, pad2, pad2 + #you_pressed, "SplitTyperOk" }
+    end
+  else
+    local pad = math.max(0, math.floor((win_width - #display) / 2))
+    lines[#lines + 1] = string.rep(" ", pad) .. display
+    highlights[#highlights + 1] = { combo_line_idx, pad, pad + #display, "SplitTyperTitle" }
+  end
+
+  for _ = 1, 4 do
+    lines[#lines + 1] = ""
+  end
+
+  -- Progress bar
+  local bar_width = 30
+  local filled = total > 0 and math.floor((completed / total) * bar_width) or 0
+  local bar = string.rep("\u{2588}", filled) .. string.rep("\u{2591}", bar_width - filled)
+  local progress_str = string.format("       %s  %d / %d", bar, completed, total)
+  lines[#lines + 1] = progress_str
+  local prog_line = #lines - 1
+  highlights[#highlights + 1] = { prog_line, 7, 7 + filled, "SplitTyperGood" }
+  highlights[#highlights + 1] = { prog_line, 7 + filled, 7 + bar_width, "SplitTyperProgressBg" }
+
+  lines[#lines + 1] = ""
+
+  -- Stats
+  local stats_str = string.format("       Correct: %d   Errors: %d   Streak: %d (best %d)",
+    correct, state.error_count, state.streak, state.best_streak)
+  lines[#lines + 1] = stats_str
+
+  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+  vim.bo[state.buf].modifiable = false
+
+  -- Clear and re-apply highlights
+  vim.api.nvim_buf_clear_namespace(state.buf, state.ns, 0, -1)
+
+  -- Header as virtual lines above
+  vim.api.nvim_buf_set_extmark(state.buf, state.ns, 0, 0, {
+    virt_lines_above = true,
+    virt_lines = {
+      { { " " .. cat_name, "SplitTyperHeader" }, { "  ", "" }, { string.format("%d/%d", completed, total), "SplitTyperProgress" } },
+      { { " Press the key combination shown below", "SplitTyperMenuDesc" } },
+      { { " " .. string.rep("\u{2500}", 60), "SplitTyperSep" } },
+      { { "", "" } },
+    },
+  })
+
+  for _, h in ipairs(highlights) do
+    pcall(vim.api.nvim_buf_set_extmark, state.buf, state.ns, h[1], h[2], {
+      end_col = h[3],
+      hl_group = h[4],
+    })
+  end
+end
+
+-- Show the combo category selection sub-menu
+function M.show_combo_menu()
+  if state.timer then
+    state.timer:stop()
+    state.timer:close()
+    state.timer = nil
+  end
+
+  state.screen = "combo_menu"
+  ensure_window()
+  clear_buffer()
+
+  local cats = exercises.get_combo_categories()
+
+  local lines = {}
+  local highlights = {}
+
+  table.insert(lines, "")
+  table.insert(lines, "       COMBO TRAINER")
+  table.insert(lines, "       Practice modifier key combinations")
+  table.insert(lines, "")
+  highlights[#highlights + 1] = { 1, 0, #lines[2], "SplitTyperTitle" }
+  highlights[#highlights + 1] = { 2, 0, #lines[3], "SplitTyperHeader" }
+
+  local sep = string.rep("\u{2500}", 60)
+  table.insert(lines, sep)
+  highlights[#highlights + 1] = { #lines - 1, 0, #sep, "SplitTyperSep" }
+  table.insert(lines, "")
+
+  table.insert(lines, "  Modifier key detection requires a modern terminal")
+  table.insert(lines, "  (kitty, wezterm, alacritty). Press Space to skip")
+  table.insert(lines, "  any combo your terminal can't send.")
+  highlights[#highlights + 1] = { #lines - 3, 0, #lines[#lines - 2], "SplitTyperMenuDesc" }
+  highlights[#highlights + 1] = { #lines - 2, 0, #lines[#lines - 1], "SplitTyperMenuDesc" }
+  highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], "SplitTyperMenuDesc" }
+  table.insert(lines, "")
+
+  local cat_keys = {}
+  for i, cat in ipairs(cats) do
+    local key = tostring(i)
+    if i == 10 then
+      key = "0"
+    end
+    cat_keys[cat.id] = key
+    local line = string.format("  [%s]  %-28s %s", key, cat.name, cat.description)
+    table.insert(lines, line)
+    local li = #lines - 1
+    highlights[#highlights + 1] = { li, 2, 5, "SplitTyperMenuKey" }
+    highlights[#highlights + 1] = { li, 34, #line, "SplitTyperMenuDesc" }
+  end
+
+  table.insert(lines, "")
+  table.insert(lines, sep)
+  highlights[#highlights + 1] = { #lines - 1, 0, #sep, "SplitTyperSep" }
+  table.insert(lines, "")
+  table.insert(lines, "  [Esc] Back to menu    [q] Quit")
+
+  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+  vim.bo[state.buf].modifiable = false
+
+  if state.ns then
+    for _, h in ipairs(highlights) do
+      pcall(vim.api.nvim_buf_set_extmark, state.buf, state.ns, h[1], h[2], {
+        end_col = h[3],
+        hl_group = h[4],
+      })
+    end
+  end
+
+  clear_keymaps()
+
+  for _, cat in ipairs(cats) do
+    local key = cat_keys[cat.id]
+    if key then
+      map(key, function()
+        M.start_combo_exercise(cat.id)
+      end)
+    end
+  end
+
+  map("<Esc>", function()
+    M.show_menu()
+  end)
+  map("q", function()
+    M.cleanup()
+  end)
+  map("<C-c>", function()
+    M.cleanup()
+  end)
+end
+
+-- Start a combo exercise
+function M.start_combo_exercise(category_id)
+  state.screen = "combo_exercise"
+  state.category_id = category_id
+  state.combo_mode = true
+
+  local combos = exercises.generate_combo_exercise(category_id)
+  if not combos then
+    vim.notify("No combo exercise found", vim.log.levels.ERROR)
+    return
+  end
+
+  state.combos = combos
+  state.combo_idx = 1
+  state.combo_results = {}
+  state.combo_feedback = nil
+  state.combo_waiting = false
+  state.input = {}
+  state.pos = 0
+  state.error_count = 0
+  state.keystroke_count = 0
+  state.start_time = nil
+  state.end_time = nil
+  state.finished = false
+  state.streak = 0
+  state.best_streak = 0
+  state.error_log = {}
+  state.header_extmark = nil
+  state.char_map = nil
+  state.target = nil
+
+  ensure_window()
+  clear_buffer()
+  setup_combo_keymaps()
+  update_combo_display()
+end
+
+-- Save combo exercise stats to history
+function save_combo_stats()
+  local stats = get_combo_stats()
+  if stats.completed == 0 then
+    return
+  end
+
+  vim.fn.mkdir(stats_dir, "p")
+
+  local history = {}
+  local f = io.open(stats_file, "r")
+  if f then
+    local content = f:read("*a")
+    f:close()
+    if content and #content > 0 then
+      local ok, data = pcall(vim.json.decode, content)
+      if ok and type(data) == "table" then
+        history = data
+      end
+    end
+  end
+
+  table.insert(history, {
+    date = os.date("%Y-%m-%d %H:%M:%S"),
+    category = state.category_id,
+    wpm = stats.cpm,
+    accuracy = stats.accuracy,
+    score = stats.score,
+    errors = stats.errors,
+    time = math.floor(stats.time),
+    chars = stats.completed,
+  })
+
+  if #history > 500 then
+    local new = {}
+    for i = #history - 499, #history do
+      new[#new + 1] = history[i]
+    end
+    history = new
+  end
+
+  f = io.open(stats_file, "w")
+  if f then
+    f:write(vim.json.encode(history))
+    f:close()
+  end
+end
+
+-- Show combo exercise results
+function M.show_combo_results()
+  if state.timer then
+    state.timer:stop()
+    state.timer:close()
+    state.timer = nil
+  end
+
+  state.screen = "combo_results"
+  ensure_window()
+  clear_buffer()
+
+  local stats = get_combo_stats()
+
+  local rating, rating_hl
+  if stats.score >= 200 then
+    rating, rating_hl = "MASTER", "SplitTyperGood"
+  elseif stats.score >= 150 then
+    rating, rating_hl = "Excellent", "SplitTyperGood"
+  elseif stats.score >= 100 then
+    rating, rating_hl = "Great", "SplitTyperGood"
+  elseif stats.score >= 60 then
+    rating, rating_hl = "Good", "SplitTyperOk"
+  elseif stats.score >= 30 then
+    rating, rating_hl = "Decent", "SplitTyperOk"
+  elseif stats.score >= 15 then
+    rating, rating_hl = "Getting there", "SplitTyperOk"
+  else
+    rating, rating_hl = "Keep practicing!", "SplitTyperBad"
+  end
+
+  local lines = {}
+  local highlights = {}
+
+  local function add(text)
+    lines[#lines + 1] = text or ""
+  end
+  local function hl(col_start, col_end, group)
+    highlights[#highlights + 1] = { #lines - 1, col_start, col_end, group }
+  end
+
+  add("")
+  add("       COMBO EXERCISE COMPLETE")
+  hl(0, #lines[#lines], "SplitTyperTitle")
+  add("")
+  local sep = string.rep("\u{2500}", 50)
+  add(sep)
+  hl(0, #sep, "SplitTyperSep")
+  add("")
+
+  local cpm_hl = stats.cpm >= 40 and "SplitTyperGood" or (stats.cpm >= 20 and "SplitTyperOk" or "SplitTyperBad")
+  local acc_hl = stats.accuracy >= 95 and "SplitTyperGood" or (stats.accuracy >= 80 and "SplitTyperOk" or "SplitTyperBad")
+
+  add(string.format("    Combos/min:  %d", stats.cpm))
+  hl(17, #lines[#lines], cpm_hl)
+  add(string.format("    Accuracy:    %.1f%%", stats.accuracy))
+  hl(17, #lines[#lines], acc_hl)
+  add(string.format("    Correct:     %d / %d", stats.correct, stats.total))
+  hl(17, #lines[#lines], stats.correct == stats.total and "SplitTyperGood" or "SplitTyperOk")
+  add(string.format("    Errors:      %d", stats.errors))
+  hl(17, #lines[#lines], stats.errors > 0 and "SplitTyperBad" or "SplitTyperGood")
+  add(string.format("    Best streak: %d", stats.best_streak))
+  hl(17, #lines[#lines], stats.best_streak >= stats.total and "SplitTyperGood"
+    or (stats.best_streak >= 10 and "SplitTyperOk" or "SplitTyperStats"))
+  add(string.format("    Time:        %s", format_time(stats.time)))
+  add("")
+  add(string.format("    Score:       %d", stats.score))
+  hl(17, #lines[#lines], "SplitTyperScore")
+  add(string.format("    Rating:      %s", rating))
+  hl(17, #lines[#lines], rating_hl)
+
+  -- Error details
+  if #state.error_log > 0 then
+    add("")
+    add(sep)
+    hl(0, #sep, "SplitTyperSep")
+    add("")
+    add("    Mistakes:")
+    hl(0, #lines[#lines], "SplitTyperSep")
+    add("")
+
+    for i, err in ipairs(state.error_log) do
+      if i > 10 then
+        add(string.format("    ... and %d more", #state.error_log - 10))
+        hl(0, #lines[#lines], "SplitTyperPending")
+        break
+      end
+      local err_line = string.format("      Expected %-16s  pressed %s", err.expected_display, err.actual_display)
+      add(err_line)
+      highlights[#highlights + 1] = { #lines - 1, 6, 15 + #err.expected_display, "SplitTyperOk" }
+      highlights[#highlights + 1] = { #lines - 1, #err_line - #err.actual_display, #err_line, "SplitTyperBad" }
+    end
+  end
+
+  add("")
+  add(sep)
+  hl(0, #sep, "SplitTyperSep")
+  add("")
+  add("    [n] Next exercise")
+  hl(4, 7, "SplitTyperMenuKey")
+  add("    [r] Retry (new random set)")
+  hl(4, 7, "SplitTyperMenuKey")
+  add("    [m] Back to combo menu")
+  hl(4, 7, "SplitTyperMenuKey")
+  add("    [q] Quit")
+  hl(4, 7, "SplitTyperMenuKey")
+  add("")
+
+  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+  vim.bo[state.buf].modifiable = false
+
+  if state.ns then
+    for _, h in ipairs(highlights) do
+      pcall(vim.api.nvim_buf_set_extmark, state.buf, state.ns, h[1], h[2], {
+        end_col = h[3],
+        hl_group = h[4],
+      })
+    end
+  end
+
+  clear_keymaps()
+
+  map("n", function()
+    M.start_combo_exercise(state.category_id)
+  end)
+  map("r", function()
+    M.start_combo_exercise(state.category_id)
+  end)
+  map("m", function()
+    M.show_combo_menu()
+  end)
+  map("<Esc>", function()
+    M.show_combo_menu()
+  end)
+  map("q", function()
+    M.cleanup()
+  end)
+  map("<C-c>", function()
+    M.cleanup()
+  end)
+end
+
+-- ============================================================
 -- Free-play mode
 -- ============================================================
 
 -- Menu section definitions for grouping categories
 local menu_sections = {
   { title = "General", pattern = "^home_row$|^left_hand$|^right_hand$|^center_column$|^common_words$" },
-  { title = "Characters", pattern = "^numbers$|^symbols$|^brackets$" },
+  { title = "Characters", pattern = "^numbers$|^symbols$|^brackets$|^special_" },
   { title = "Code", pattern = "^code_" },
   { title = "Text", pattern = "^prose$|^mixed$" },
   { title = "Precision (no backspace)", pattern = "^precision_" },
@@ -988,7 +1681,7 @@ function M.show_menu()
   end
 
   -- Assign keys: 1-9, 0, a-z (skip reserved keys)
-  local reserved = { q = true, c = true, s = true, t = true }
+  local reserved = { q = true, c = true, s = true, t = true, k = true }
   local key_pool = {}
   for i = 1, 9 do
     key_pool[#key_pool + 1] = tostring(i)
@@ -999,6 +1692,10 @@ function M.show_menu()
     if not reserved[ch] then
       key_pool[#key_pool + 1] = ch
     end
+  end
+  -- Overflow keys for large category lists
+  for _, extra in ipairs({ "A", "B", "C", "D", "E" }) do
+    key_pool[#key_pool + 1] = extra
   end
 
   local key_idx = 0
@@ -1060,6 +1757,12 @@ function M.show_menu()
   highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
   highlights[#highlights + 1] = { #lines - 1, 34, #dash_line, "SplitTyperMenuDesc" }
 
+  -- Combo trainer
+  local combo_line = string.format("  [k]  %-28s %s", "Combo Trainer", "Practice Ctrl, Alt and modifier combos")
+  table.insert(lines, combo_line)
+  highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
+  highlights[#highlights + 1] = { #lines - 1, 34, #combo_line, "SplitTyperMenuDesc" }
+
   table.insert(lines, "")
 
   -- Free play categories
@@ -1118,6 +1821,9 @@ function M.show_menu()
     if errs.has_enough_data() then
       M.start_targeted_exercise()
     end
+  end)
+  map("k", function()
+    M.show_combo_menu()
   end)
 
   for _, cat in ipairs(cats) do
@@ -1339,10 +2045,6 @@ function M.show_results()
   end)
 end
 
--- Stats persistence
-local stats_dir = vim.fn.stdpath("data") .. "/split-typer"
-local stats_file = stats_dir .. "/history.json"
-
 function save_stats()
   local stats = get_stats()
   if stats.wpm == 0 and stats.typed_chars == 0 then
@@ -1473,6 +2175,17 @@ function M.open(category)
     end
     if category == "dashboard" then
       M.show_dashboard()
+      return
+    end
+    if category == "combos" then
+      M.show_combo_menu()
+      return
+    end
+    -- Check combo categories
+    local combo_cat = exercises.get_combo_category(category)
+    if combo_cat then
+      ensure_window()
+      M.start_combo_exercise(category)
       return
     end
     local cat = exercises.get_category(category)

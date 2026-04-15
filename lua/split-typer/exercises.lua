@@ -558,6 +558,34 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
       "arr[0] = obj.key || 'default';",
     },
   },
+
+  -- Focused special character drilling
+  {
+    id = "special_shifted_nums",
+    name = "Shifted: Number Row",
+    description = "Drill ! @ # $ % ^ & * ( ) one by one",
+    exercises = {
+      "! ! ! @ @ @ # # # $ $ $ % % % ^ ^ ^ & & & * * * ( ( ( ) ) )",
+      "!@#$%^&*() )(*&^%$#@! !@#$% ^&*() !@#$%^&*()",
+      "$99 100% #tag @user &ref *ptr (ok) 2^8 !done",
+      "fn(*args, **kwargs); x = a ^ b & c | !d;",
+      "#[derive(Debug)] !important @media $HOME %d",
+      "(a + b) * (c - d) ^ 2 != $0 & !false % 100",
+    },
+  },
+  {
+    id = "special_shifted_punct",
+    name = "Shifted: Punctuation",
+    description = [[Drill ~ _ + { } | : " < > ? in context]],
+    exercises = {
+      [[~ ~ _ _ + + { { } } | | : : " " < < > > ? ?]],
+      "~/.config ~/bin ~/.local/share ~root",
+      [[{ "name": "test", "value": 42 } | { "ok": true }]],
+      [[a + b > c ? "yes" : "no" | "default"]],
+      "type Config = { host: string; port?: number };",
+      [[cmd | grep "TODO" | sort > out.txt 2>&1]],
+    },
+  },
 }
 
 function M.get_categories()
@@ -595,6 +623,115 @@ function M.get_exercise(category_id, index)
     return nil
   end
   return cat.exercises[index]
+end
+
+-- ============================================================
+-- Combo (modifier key) categories
+-- ============================================================
+
+local function make_combo_pool(modifier_code, modifier_name, keys)
+  local pool = {}
+  for i = 1, #keys do
+    local key = keys:sub(i, i)
+    local display_key = key:match("%d") and key or key:upper()
+    pool[#pool + 1] = {
+      display = modifier_name .. " + " .. display_key,
+      key = "<" .. modifier_code .. "-" .. key .. ">",
+    }
+  end
+  return pool
+end
+
+local function merge_pools(...)
+  local merged = {}
+  for _, pool in ipairs({ ... }) do
+    for _, item in ipairs(pool) do
+      merged[#merged + 1] = item
+    end
+  end
+  return merged
+end
+
+-- Safe Ctrl keys (skip c,h,i,j,m,q,s,z which conflict with terminal/Neovim)
+local ctrl_letter_pool = make_combo_pool("C", "Ctrl", "abdefgklnoprtuvwxy")
+local alt_letter_pool = make_combo_pool("A", "Alt", "abcdefghijklmnopqrstuvwxyz")
+local ctrl_num_pool = make_combo_pool("C", "Ctrl", "0123456789")
+local alt_num_pool = make_combo_pool("A", "Alt", "0123456789")
+
+M.combo_categories = {
+  {
+    id = "combo_ctrl",
+    name = "Ctrl + Letter",
+    description = "Practice Ctrl modifier with letter keys",
+    combo_pool = ctrl_letter_pool,
+    combo_count = { 15, 20 },
+  },
+  {
+    id = "combo_alt",
+    name = "Alt + Letter",
+    description = "Practice Alt modifier with letter keys",
+    combo_pool = alt_letter_pool,
+    combo_count = { 15, 20 },
+  },
+  {
+    id = "combo_ctrl_num",
+    name = "Ctrl + Number",
+    description = "Ctrl with number keys (needs kitty/CSI u terminal)",
+    combo_pool = ctrl_num_pool,
+    combo_count = { 10, 15 },
+  },
+  {
+    id = "combo_alt_num",
+    name = "Alt + Number",
+    description = "Alt with number keys",
+    combo_pool = alt_num_pool,
+    combo_count = { 10, 15 },
+  },
+  {
+    id = "combo_mixed",
+    name = "Mixed Modifiers",
+    description = "Random mix of Ctrl and Alt combinations",
+    combo_pool = merge_pools(ctrl_letter_pool, alt_letter_pool, alt_num_pool),
+    combo_count = { 20, 30 },
+  },
+}
+
+function M.get_combo_categories()
+  return M.combo_categories
+end
+
+function M.get_combo_category(id)
+  for _, cat in ipairs(M.combo_categories) do
+    if cat.id == id then
+      return cat
+    end
+  end
+  return nil
+end
+
+function M.generate_combo_exercise(category_id)
+  local cat = M.get_combo_category(category_id)
+  if not cat then
+    return nil
+  end
+
+  local pool = cat.combo_pool
+  local count = math.random(cat.combo_count[1], cat.combo_count[2])
+  local combos = {}
+  local last_key = nil
+
+  for i = 1, count do
+    local combo
+    local attempts = 0
+    repeat
+      combo = pool[math.random(1, #pool)]
+      attempts = attempts + 1
+    until combo.key ~= last_key or #pool <= 1 or attempts > 10
+    combos[i] = { display = combo.display, key = combo.key }
+    last_key = combo.key
+  end
+
+  return combos
 end
 
 return M
