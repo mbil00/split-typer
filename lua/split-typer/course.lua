@@ -1,4 +1,5 @@
 local storage = require("split-typer.storage")
+local errs = require("split-typer.errors")
 local words = require("split-typer.words")
 
 local M = {}
@@ -15,8 +16,9 @@ M.levels = {
     all_chars = "asdfjkl;",
     description = "Find your home position on the columnar grid",
     req_wpm = 8,
-    req_accuracy = 92,
-    req_max_errors = 5,
+    req_accuracy = 94,
+    req_efficiency = 88,
+    req_max_errors = 4,
     req_exercises = 3,
     words_range = { 10, 16 },
   },
@@ -27,8 +29,9 @@ M.levels = {
     all_chars = "asdfjkl;ei",
     description = "Middle fingers reach up to the top row",
     req_wpm = 10,
-    req_accuracy = 92,
-    req_max_errors = 5,
+    req_accuracy = 94,
+    req_efficiency = 88,
+    req_max_errors = 4,
     req_exercises = 3,
     words_range = { 10, 18 },
   },
@@ -39,8 +42,9 @@ M.levels = {
     all_chars = "asdfjkl;eiru",
     description = "Index fingers reach up to the top row",
     req_wpm = 10,
-    req_accuracy = 93,
-    req_max_errors = 5,
+    req_accuracy = 94,
+    req_efficiency = 89,
+    req_max_errors = 4,
     req_exercises = 3,
     words_range = { 12, 18 },
   },
@@ -51,8 +55,9 @@ M.levels = {
     all_chars = "asdfjkl;eirugh",
     description = "Index fingers reach inward - the split boundary",
     req_wpm = 10,
-    req_accuracy = 92,
-    req_max_errors = 5,
+    req_accuracy = 94,
+    req_efficiency = 89,
+    req_max_errors = 4,
     req_exercises = 4,
     words_range = { 12, 18 },
   },
@@ -63,7 +68,8 @@ M.levels = {
     all_chars = "asdfjkl;eirughty",
     description = "Center column top row - another split challenge",
     req_wpm = 12,
-    req_accuracy = 93,
+    req_accuracy = 95,
+    req_efficiency = 90,
     req_max_errors = 4,
     req_exercises = 3,
     words_range = { 12, 20 },
@@ -75,7 +81,8 @@ M.levels = {
     all_chars = "asdfjkl;eirughtywo",
     description = "Ring fingers reach up to the top row",
     req_wpm = 12,
-    req_accuracy = 94,
+    req_accuracy = 95,
+    req_efficiency = 90,
     req_max_errors = 4,
     req_exercises = 3,
     words_range = { 12, 20 },
@@ -87,8 +94,9 @@ M.levels = {
     all_chars = "asdfjkl;eirughtywoqp",
     description = "Pinkies reach up - full top row complete",
     req_wpm = 14,
-    req_accuracy = 94,
-    req_max_errors = 4,
+    req_accuracy = 95,
+    req_efficiency = 91,
+    req_max_errors = 3,
     req_exercises = 3,
     words_range = { 12, 20 },
   },
@@ -99,8 +107,9 @@ M.levels = {
     all_chars = "asdfjkl;eirughtywoqpcvb",
     description = "Left hand reaches down to the bottom row",
     req_wpm = 14,
-    req_accuracy = 95,
-    req_max_errors = 4,
+    req_accuracy = 96,
+    req_efficiency = 91,
+    req_max_errors = 3,
     req_exercises = 3,
     words_range = { 14, 22 },
   },
@@ -111,7 +120,8 @@ M.levels = {
     all_chars = "asdfjkl;eirughtywoqpcvbnm,",
     description = "Right hand reaches down to the bottom row",
     req_wpm = 15,
-    req_accuracy = 95,
+    req_accuracy = 96,
+    req_efficiency = 92,
     req_max_errors = 3,
     req_exercises = 3,
     words_range = { 14, 22 },
@@ -123,7 +133,8 @@ M.levels = {
     all_chars = "asdfjkl;eirughtywoqpcvbnm,xz./",
     description = "Complete the bottom row - all letter keys unlocked",
     req_wpm = 15,
-    req_accuracy = 95,
+    req_accuracy = 96,
+    req_efficiency = 92,
     req_max_errors = 3,
     req_exercises = 4,
     words_range = { 14, 22 },
@@ -135,7 +146,8 @@ M.levels = {
     all_chars = "asdfjkl;eirughtywoqpcvbnm,xz./1234567890",
     description = "Top row numbers on the columnar grid",
     req_wpm = 14,
-    req_accuracy = 94,
+    req_accuracy = 95,
+    req_efficiency = 90,
     req_max_errors = 4,
     req_exercises = 4,
     words_range = { 12, 18 },
@@ -147,7 +159,8 @@ M.levels = {
     all_chars = "asdfjkl;eirughtywoqpcvbnm,xz./1234567890!@#$%^&*()-_=+[]{}|;:'\"<>?",
     description = "All keys - prove your mastery of the split keyboard",
     req_wpm = 16,
-    req_accuracy = 96,
+    req_accuracy = 97,
+    req_efficiency = 93,
     req_max_errors = 3,
     req_exercises = 5,
     words_range = { 14, 22 },
@@ -158,6 +171,13 @@ M.levels = {
 local progress_file = storage.data_path("progress.json")
 
 local _progress = nil
+
+local function required_consecutive(level)
+  if level.req_consecutive then
+    return level.req_consecutive
+  end
+  return level.id >= 8 and 3 or 2
+end
 
 --- Load progress from disk.
 --- @return table
@@ -185,7 +205,21 @@ function M.get_level_progress(level_id)
   local prog = M.load_progress()
   local key = tostring(level_id)
   if not prog.levels[key] then
-    prog.levels[key] = { completed = 0, best_wpm = 0, best_accuracy = 0, passed = false }
+    prog.levels[key] = {
+      completed = 0,
+      current_streak = 0,
+      best_pass_streak = 0,
+      best_wpm = 0,
+      best_accuracy = 0,
+      passed = false,
+    }
+  else
+    prog.levels[key].completed = prog.levels[key].completed or 0
+    prog.levels[key].current_streak = prog.levels[key].current_streak or 0
+    prog.levels[key].best_pass_streak = prog.levels[key].best_pass_streak or 0
+    prog.levels[key].best_wpm = prog.levels[key].best_wpm or 0
+    prog.levels[key].best_accuracy = prog.levels[key].best_accuracy or 0
+    prog.levels[key].passed = prog.levels[key].passed or false
   end
   return prog.levels[key]
 end
@@ -194,10 +228,11 @@ end
 --- @param level_id number
 --- @param wpm number
 --- @param accuracy number
+--- @param efficiency number
 --- @param errors number Total error keystrokes
 --- @return boolean passed Whether this exercise counts toward passing
 --- @return boolean level_complete Whether the level is now fully passed
-function M.record_exercise(level_id, wpm, accuracy, errors)
+function M.record_exercise(level_id, wpm, accuracy, efficiency, errors)
   local level = M.get_level(level_id)
   if not level then
     return false, false
@@ -216,18 +251,28 @@ function M.record_exercise(level_id, wpm, accuracy, errors)
   -- Check if this exercise meets ALL passing requirements:
   -- 1. Minimum WPM
   -- 2. Minimum accuracy percentage
-  -- 3. Maximum error count (hard cap)
+  -- 3. Minimum efficiency (penalizes corrections and backspacing)
+  -- 4. Maximum error count (hard cap)
   local max_errors = level.req_max_errors or 5
+  local min_efficiency = level.req_efficiency or 0
+  local min_consecutive = required_consecutive(level)
   local passed_exercise = wpm >= level.req_wpm
     and accuracy >= level.req_accuracy
+    and efficiency >= min_efficiency
     and errors <= max_errors
   if passed_exercise then
     prog.completed = prog.completed + 1
+    prog.current_streak = prog.current_streak + 1
+    if prog.current_streak > prog.best_pass_streak then
+      prog.best_pass_streak = prog.current_streak
+    end
+  else
+    prog.current_streak = 0
   end
 
   -- Check if level is now complete
   local level_complete = false
-  if not prog.passed and prog.completed >= level.req_exercises then
+  if not prog.passed and prog.completed >= level.req_exercises and prog.current_streak >= min_consecutive then
     prog.passed = true
     level_complete = true
     -- Advance current level
@@ -285,19 +330,35 @@ function M.generate_exercise(level_id)
     return generate_mastery_exercise(level)
   end
 
+  local adaptive_focus = errs.get_adaptive_focus_chars({
+    allowed_chars = level.all_chars,
+    seed_chars = level.new_chars,
+    limit = 5,
+    min_total = 12,
+  })
+
   return words.generate({
     chars = level.all_chars,
-    focus_chars = level.new_chars,
-    min_words = level.words_range[1],
-    max_words = level.words_range[2],
+    focus_chars = adaptive_focus,
+    min_focus_occurrences = math.max(12, #adaptive_focus * 4),
+    min_words = level.words_range[1] + 4,
+    max_words = level.words_range[2] + 6,
   })
+end
+
+function M.get_required_consecutive(level_id)
+  local level = M.get_level(level_id)
+  if not level then
+    return 0
+  end
+  return required_consecutive(level)
 end
 
 --- Generate a mastery exercise that includes symbols, numbers, and words.
 function generate_mastery_exercise(level)
   -- Mix of words, number sequences, and symbol patterns
   local parts = {}
-  local num_parts = math.random(12, 18)
+  local num_parts = math.random(18, 26)
   local word_pool = words.filter("abcdefghijklmnopqrstuvwxyz")
 
   local symbol_patterns = {

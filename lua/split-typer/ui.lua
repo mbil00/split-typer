@@ -2,6 +2,7 @@ local combo = require("split-typer.ui.combo")
 local course = require("split-typer.course")
 local errs = require("split-typer.errors")
 local exercises = require("split-typer.exercises")
+local reaction = require("split-typer.ui.reaction")
 local screens = require("split-typer.ui.screens")
 local state_mod = require("split-typer.ui.state")
 local storage = require("split-typer.storage")
@@ -19,6 +20,8 @@ local ctx = {
   errs = errs,
   exercises = exercises,
   save_combo_stats = nil,
+  reaction = reaction,
+  save_reaction_stats = nil,
   save_stats = nil,
   state = state,
   state_mod = state_mod,
@@ -40,27 +43,118 @@ local function append_history(entry)
   storage.append_capped(stats_file, entry, 500)
 end
 
+local function get_typed_char_map()
+  if not state.char_map then
+    return nil
+  end
+  if not state.timed_mode or state.pos >= #state.char_map then
+    return state.char_map
+  end
+
+  local typed = {}
+  for i = 1, state.pos do
+    typed[i] = state.char_map[i]
+  end
+  return typed
+end
+
+local function generate_timed_chunk()
+  local text = errs.generate_targeted_exercise({
+    allowed_chars = "abcdefghijklmnopqrstuvwxyz",
+    seed_chars = errs.get_adaptive_focus_chars({
+      allowed_chars = "abcdefghijklmnopqrstuvwxyz",
+      limit = 5,
+      min_total = 12,
+    }),
+    min_focus_occurrences = 16,
+    min_words = 22,
+    max_words = 32,
+  })
+  return text
+end
+
+local function build_timed_postmortem(typed_char_map)
+  if not state.timed_mode then
+    return nil
+  end
+
+  local session_chars = errs.get_session_worst_chars(state.error_log, 5)
+  local session_bigrams = errs.get_session_worst_bigrams(state.error_log, typed_char_map, 5, state.pos)
+  local decay = errs.get_session_decay(state.key_events)
+
+  local chars_out = {}
+  for _, item in ipairs(session_chars) do
+    chars_out[#chars_out + 1] = {
+      char = item.char,
+      count = item.count,
+    }
+  end
+
+  local bigrams_out = {}
+  for _, item in ipairs(session_bigrams) do
+    bigrams_out[#bigrams_out + 1] = {
+      bigram = item.bigram,
+      error_rate = item.error_rate,
+      errors = item.errors,
+      total = item.total,
+    }
+  end
+
+  local decay_out = nil
+  if decay then
+    decay_out = {
+      first = {
+        wpm = math.floor(decay.first.wpm),
+        accuracy = math.floor(decay.first.accuracy * 10) / 10,
+        efficiency = math.floor(decay.first.efficiency * 10) / 10,
+      },
+      second = {
+        wpm = math.floor(decay.second.wpm),
+        accuracy = math.floor(decay.second.accuracy * 10) / 10,
+        efficiency = math.floor(decay.second.efficiency * 10) / 10,
+      },
+      wpm_delta = math.floor(decay.wpm_delta),
+      accuracy_delta = math.floor(decay.accuracy_delta * 10) / 10,
+      efficiency_delta = math.floor(decay.efficiency_delta * 10) / 10,
+    }
+  end
+
+  return {
+    worst_chars = chars_out,
+    worst_bigrams = bigrams_out,
+    decay = decay_out,
+  }
+end
+
 local function save_stats()
   local stats = state_mod.get_stats(state)
   if stats.wpm == 0 and stats.typed_chars == 0 then
     return
   end
 
-  if state.char_map and #state.error_log > 0 then
-    pcall(errs.record_session, state.error_log, state.char_map)
-  elseif state.char_map then
-    pcall(errs.record_session, {}, state.char_map)
+  local typed_char_map = get_typed_char_map()
+  if typed_char_map and #state.error_log > 0 then
+    pcall(errs.record_session, state.error_log, typed_char_map)
+  elseif typed_char_map then
+    pcall(errs.record_session, {}, typed_char_map)
   end
+
+  local timed_postmortem = build_timed_postmortem(typed_char_map)
 
   append_history({
     date = os.date("%Y-%m-%d %H:%M:%S"),
     category = state.category_id,
     wpm = stats.wpm,
+    gross_wpm = stats.gross_wpm,
     accuracy = stats.accuracy,
+    efficiency = stats.efficiency,
     score = stats.score,
     errors = stats.errors,
+    backspaces = stats.backspaces,
     time = math.floor(stats.time),
     chars = stats.total_chars,
+    timed = state.timed_mode or nil,
+    timed_postmortem = timed_postmortem,
   })
 end
 
@@ -82,8 +176,27 @@ local function save_combo_stats()
   })
 end
 
+local function save_reaction_stats()
+  local stats = state_mod.get_reaction_stats(state)
+  if stats.completed == 0 then
+    return
+  end
+
+  append_history({
+    date = os.date("%Y-%m-%d %H:%M:%S"),
+    category = state.category_id,
+    wpm = stats.cpm,
+    accuracy = stats.accuracy,
+    score = stats.score,
+    errors = stats.errors,
+    time = math.floor(stats.time),
+    chars = stats.completed,
+  })
+end
+
 ctx.save_stats = save_stats
 ctx.save_combo_stats = save_combo_stats
+ctx.save_reaction_stats = save_reaction_stats
 
 function M.show_course()
   screens.show_course(ctx)
@@ -102,7 +215,7 @@ function M.start_course_exercise(level_id)
   state_mod.reset_typing_session(state, text, {
     category_id = "course_" .. level_id,
     exercise_idx = nil,
-    no_backspace = false,
+    no_backspace = true,
   })
 
   window.ensure_window(state, M.cleanup)
@@ -142,6 +255,32 @@ function M.show_combo_results()
   screens.show_combo_results(ctx)
 end
 
+function M.show_reaction_menu()
+  screens.show_reaction_menu(ctx)
+end
+
+function M.start_reaction_exercise(category_id)
+  state.screen = "reaction_exercise"
+  state.category_id = category_id
+  state.reaction_mode = true
+
+  local prompts = exercises.generate_reaction_exercise(category_id)
+  if not prompts then
+    vim.notify("No reaction exercise found", vim.log.levels.ERROR)
+    return
+  end
+
+  state_mod.reset_reaction_session(state, category_id, prompts)
+  window.ensure_window(state, M.cleanup)
+  window.clear_buffer(state)
+  reaction.setup_keymaps(ctx)
+  reaction.update_display(ctx)
+end
+
+function M.show_reaction_results()
+  screens.show_reaction_results(ctx)
+end
+
 function M.show_menu()
   screens.show_menu(ctx)
 end
@@ -168,6 +307,8 @@ function M.start_exercise(category_id, exercise_idx)
     category_id = category_id,
     exercise_idx = state.exercise_idx,
     no_backspace = cat and cat.no_backspace or false,
+    error_limit = cat and cat.error_limit or nil,
+    repeat_until_clean = cat and cat.repeat_until_clean or false,
   })
 
   window.ensure_window(state, M.cleanup)
@@ -177,8 +318,33 @@ function M.start_exercise(category_id, exercise_idx)
   typing.update_display(ctx)
 end
 
+function M.restart_current_text()
+  if not state.target or #state.target == 0 then
+    return
+  end
+
+  local cat = exercises.get_category(state.category_id)
+  state_mod.reset_typing_session(state, state.target, {
+    category_id = state.category_id,
+    exercise_idx = state.exercise_idx,
+    no_backspace = cat and cat.no_backspace or false,
+    error_limit = cat and cat.error_limit or nil,
+    repeat_until_clean = cat and cat.repeat_until_clean or false,
+  })
+
+  window.ensure_window(state, M.cleanup)
+  window.clear_buffer(state)
+  set_buffer_text(state.target)
+  typing.setup_keymaps(ctx)
+  typing.update_display(ctx)
+end
+
 function M.show_results()
   screens.show_results(ctx)
+end
+
+function M.show_timed_menu()
+  screens.show_timed_menu(ctx)
 end
 
 function M.show_dashboard()
@@ -189,11 +355,34 @@ function M.start_targeted_exercise()
   state.mode = "freeplay"
   state.screen = "exercise"
 
-  local text = errs.generate_targeted_exercise({ min_words = 12, max_words = 20 })
+  local text = errs.generate_targeted_exercise({ min_words = 16, max_words = 26, min_focus_occurrences = 14 })
   state_mod.reset_typing_session(state, text, {
     category_id = "targeted_practice",
     exercise_idx = nil,
     no_backspace = false,
+  })
+
+  window.ensure_window(state, M.cleanup)
+  window.clear_buffer(state)
+  set_buffer_text(text)
+  typing.setup_keymaps(ctx)
+  typing.update_display(ctx)
+end
+
+function M.start_timed_session(minutes)
+  state.mode = "timed"
+  state.screen = "exercise"
+
+  local first = generate_timed_chunk()
+  local second = generate_timed_chunk()
+  local text = first .. "\n" .. second
+  state_mod.reset_typing_session(state, text, {
+    category_id = "timed_" .. tostring(minutes) .. "m",
+    exercise_idx = nil,
+    no_backspace = false,
+    timed_mode = true,
+    timed_duration = minutes * 60,
+    chunk_generator = generate_timed_chunk,
   })
 
   window.ensure_window(state, M.cleanup)
@@ -219,8 +408,17 @@ ctx.actions = {
   show_combo_results = function()
     M.show_combo_results()
   end,
+  show_reaction_menu = function()
+    M.show_reaction_menu()
+  end,
+  show_reaction_results = function()
+    M.show_reaction_results()
+  end,
   show_dashboard = function()
     M.show_dashboard()
+  end,
+  show_timed_menu = function()
+    M.show_timed_menu()
   end,
   show_menu = function()
     M.show_menu()
@@ -231,14 +429,23 @@ ctx.actions = {
   start_combo_exercise = function(category_id)
     M.start_combo_exercise(category_id)
   end,
+  start_reaction_exercise = function(category_id)
+    M.start_reaction_exercise(category_id)
+  end,
   start_course_exercise = function(level_id)
     M.start_course_exercise(level_id)
   end,
   start_exercise = function(category_id, exercise_idx)
     M.start_exercise(category_id, exercise_idx)
   end,
+  restart_current_text = function()
+    M.restart_current_text()
+  end,
   start_targeted_exercise = function()
     M.start_targeted_exercise()
+  end,
+  start_timed_session = function(minutes)
+    M.start_timed_session(minutes)
   end,
 }
 
@@ -262,10 +469,24 @@ function M.open(category)
       M.show_combo_menu()
       return
     end
+    if category == "reaction" then
+      M.show_reaction_menu()
+      return
+    end
+    if category == "timed" then
+      M.show_timed_menu()
+      return
+    end
 
     if exercises.get_combo_category(category) then
       window.ensure_window(state, M.cleanup)
       M.start_combo_exercise(category)
+      return
+    end
+
+    if exercises.get_reaction_category(category) then
+      window.ensure_window(state, M.cleanup)
+      M.start_reaction_exercise(category)
       return
     end
 

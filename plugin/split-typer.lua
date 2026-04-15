@@ -10,8 +10,12 @@ end, {
   desc = "Open Split Typer - typing practice for split keyboards",
   complete = function()
     local cats = require("split-typer.exercises").get_categories()
-    local ids = { "course", "dashboard" }
+    local reaction_cats = require("split-typer.exercises").get_reaction_categories()
+    local ids = { "course", "dashboard", "timed", "combos", "reaction" }
     for _, cat in ipairs(cats) do
+      ids[#ids + 1] = cat.id
+    end
+    for _, cat in ipairs(reaction_cats) do
       ids[#ids + 1] = cat.id
     end
     return ids

@@ -22,6 +22,71 @@ local function show_no_backspace_flash(ctx)
   end, 1200)
 end
 
+local function show_accuracy_gate_flash(ctx)
+  local state = ctx.state
+  if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
+    return
+  end
+
+  local flash_ns = vim.api.nvim_create_namespace("split_typer_accuracy_flash")
+  vim.api.nvim_buf_clear_namespace(state.buf, flash_ns, 0, -1)
+  local line_count = vim.api.nvim_buf_line_count(state.buf)
+  vim.api.nvim_buf_set_extmark(state.buf, flash_ns, line_count - 1, 0, {
+    virt_lines = {
+      { { "", "" } },
+      { { "  ACCURACY GATE MISSED - exercise failed immediately", "SplitTyperBad" } },
+    },
+  })
+  vim.defer_fn(function()
+    if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
+      vim.api.nvim_buf_clear_namespace(state.buf, flash_ns, 0, -1)
+    end
+  end, 1400)
+end
+
+local function append_timed_chunk(ctx)
+  local state = ctx.state
+  if not state.timed_mode or not state.chunk_generator then
+    return
+  end
+
+  local chunk = state.chunk_generator()
+  if not chunk or #chunk == 0 then
+    return
+  end
+
+  local combined = state.target and (#state.target > 0 and (state.target .. "\n" .. chunk) or chunk) or chunk
+  state.target = combined
+  state.char_map = ctx.state_mod.build_char_map(combined)
+
+  if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
+    vim.bo[state.buf].modifiable = true
+    vim.api.nvim_buf_set_lines(state.buf, -1, -1, false, vim.split(chunk, "\n"))
+    vim.bo[state.buf].modifiable = false
+  end
+end
+
+local function finish_session(ctx)
+  local state = ctx.state
+  if state.finished then
+    return
+  end
+
+  state.finished = true
+  state.end_time = vim.uv.hrtime()
+  if state.timer then
+    state.timer:stop()
+  end
+  vim.defer_fn(function()
+    ctx.save_stats()
+    if state.mode == "course" then
+      ctx.actions.show_course_results()
+    else
+      ctx.actions.show_results()
+    end
+  end, 300)
+end
+
 function M.setup_keymaps(ctx)
   local state = ctx.state
   local map = ctx.window.map
@@ -83,6 +148,10 @@ function M.start_stats_timer(ctx)
     500,
     vim.schedule_wrap(function()
       if state.screen == "exercise" and not state.finished then
+        if state.timed_mode and state.start_time and state.timed_deadline and vim.uv.hrtime() >= state.timed_deadline then
+          finish_session(ctx)
+          return
+        end
         M.update_stats_header(ctx)
       end
     end)
@@ -94,9 +163,16 @@ function M.handle_typed_char(ctx, char)
   if state.finished or state.pos >= #state.char_map then
     return
   end
+  if state.timed_mode and state.start_time and state.timed_deadline and vim.uv.hrtime() >= state.timed_deadline then
+    finish_session(ctx)
+    return
+  end
 
   if not state.start_time then
     state.start_time = vim.uv.hrtime()
+    if state.timed_mode and state.timed_duration > 0 then
+      state.timed_deadline = state.start_time + (state.timed_duration * 1e9)
+    end
     M.start_stats_timer(ctx)
   end
 
@@ -121,20 +197,31 @@ function M.handle_typed_char(ctx, char)
     end
   end
 
+  state.key_events[#state.key_events + 1] = {
+    t = vim.uv.hrtime(),
+    kind = "type",
+    correct = char == expected,
+    pos = state.pos,
+  }
+
+  if state.error_limit ~= nil and state.error_count > state.error_limit then
+    state.fail_reason = string.format("Accuracy gate missed: %d/%d errors", state.error_count, state.error_limit)
+    state.failed_early = true
+    show_accuracy_gate_flash(ctx)
+    finish_session(ctx)
+    return
+  end
+
+  if state.timed_mode and (#state.char_map - state.pos) < 80 then
+    append_timed_chunk(ctx)
+  end
+
   if state.pos >= #state.char_map then
-    state.finished = true
-    state.end_time = vim.uv.hrtime()
-    if state.timer then
-      state.timer:stop()
+    if state.timed_mode then
+      append_timed_chunk(ctx)
+    else
+      finish_session(ctx)
     end
-    vim.defer_fn(function()
-      ctx.save_stats()
-      if state.mode == "course" then
-        ctx.actions.show_course_results()
-      else
-        ctx.actions.show_results()
-      end
-    end, 300)
   end
 
   M.update_display(ctx)
@@ -147,6 +234,13 @@ function M.handle_backspace(ctx)
   end
 
   state.keystroke_count = state.keystroke_count + 1
+  state.backspace_count = state.backspace_count + 1
+  state.streak = 0
+  state.key_events[#state.key_events + 1] = {
+    t = vim.uv.hrtime(),
+    kind = "backspace",
+    pos = state.pos,
+  }
   if state.input[state.pos] == state.char_map[state.pos].char then
     state.correct_count = state.correct_count - 1
   end
@@ -165,7 +259,16 @@ function M.update_stats_header(ctx)
   local stats = ctx.state_mod.get_stats(state)
   local cat = ctx.exercises.get_category(state.category_id)
   local cat_name = cat and cat.name or "?"
+  if state.mode == "course" and state.course_level then
+    local level = ctx.course.get_level(state.course_level)
+    cat_name = level and ("Course: " .. level.name) or cat_name
+  elseif state.timed_mode then
+    cat_name = "Timed Practice"
+  end
   local progress = string.format("%d/%d", state.pos, #state.char_map)
+  if state.timed_mode then
+    progress = tostring(state.pos) .. " chars"
+  end
 
   if state.header_extmark then
     pcall(vim.api.nvim_buf_del_extmark, state.buf, state.ns, state.header_extmark)
@@ -187,20 +290,51 @@ function M.update_stats_header(ctx)
     acc_hl = "SplitTyperBad"
   end
 
+  local eff_hl = "SplitTyperStats"
+  if stats.efficiency >= 95 then
+    eff_hl = "SplitTyperGood"
+  elseif stats.efficiency >= 85 then
+    eff_hl = "SplitTyperOk"
+  else
+    eff_hl = "SplitTyperBad"
+  end
+
   local title_line = {
     { " " .. cat_name, "SplitTyperHeader" },
     { "  ", "" },
     { progress, "SplitTyperProgress" },
   }
+  if state.timed_mode then
+    title_line[#title_line + 1] = { "  ", "" }
+    local remaining = stats.remaining_time
+    if not state.start_time then
+      remaining = state.timed_duration
+    end
+    title_line[#title_line + 1] = {
+      "Time Left: " .. ctx.state_mod.format_time(remaining),
+      remaining <= 10 and "SplitTyperBad" or "SplitTyperOk",
+    }
+  end
   if state.no_backspace then
     title_line[#title_line + 1] = { "    NO BACKSPACE", "SplitTyperBad" }
   end
+  if state.error_limit ~= nil then
+    title_line[#title_line + 1] = { "    ", "" }
+    title_line[#title_line + 1] = {
+      string.format("STRICT ERRORS: %d/%d", stats.errors, state.error_limit),
+      stats.errors > state.error_limit and "SplitTyperBad" or (stats.errors == state.error_limit and "SplitTyperOk" or "SplitTyperGood"),
+    }
+  end
 
   local stats_line = {
-    { " WPM: ", "SplitTyperSep" },
+    { " Net WPM: ", "SplitTyperSep" },
     { tostring(stats.wpm), wpm_hl },
+    { "  Gross: ", "SplitTyperSep" },
+    { tostring(stats.gross_wpm), "SplitTyperStats" },
     { "  Acc: ", "SplitTyperSep" },
     { string.format("%.1f%%", stats.accuracy), acc_hl },
+    { "  Eff: ", "SplitTyperSep" },
+    { string.format("%.1f%%", stats.efficiency), eff_hl },
     { "  Err: ", "SplitTyperSep" },
     { tostring(stats.errors), stats.errors > 0 and "SplitTyperBad" or "SplitTyperGood" },
     { "  Streak: ", "SplitTyperSep" },
@@ -208,12 +342,17 @@ function M.update_stats_header(ctx)
     { string.format(" (best: %d)", stats.best_streak), "SplitTyperPending" },
   }
 
+  local timer_note = state.start_time
+      and " Timer started on first keypress"
+      or " Timer starts on first keypress"
+
   state.header_extmark = vim.api.nvim_buf_set_extmark(state.buf, state.ns, 0, 0, {
     id = state.header_extmark,
     virt_lines_above = true,
     virt_lines = {
       title_line,
       stats_line,
+      { { timer_note, "SplitTyperPending" } },
       { { " " .. string.rep("\u{2500}", 60), "SplitTyperSep" } },
       { { "", "" } },
     },

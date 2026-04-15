@@ -71,9 +71,74 @@ M.categories = {
     },
   },
   {
+    id = "brackets_intro",
+    name = "Brackets: Intro",
+    description = "Only bracket shapes and spacing, no letters yet",
+    exercises = {
+      "() () () [] [] [] {} {} {} <> <> <>",
+      "( ) ( ) [ ] [ ] { } { } < > < >",
+      "() [] {} <> () [] {} <> () [] {} <>",
+      "(()) [[]] {{}} <<>> (()) [[]] {{}} <<>>",
+      "()() [] [] {}{} <><> ()() [] [] {}{} <><>",
+      "( [ { < > } ] ) ( [ { < > } ] )",
+    },
+  },
+  {
+    id = "brackets_nested",
+    name = "Brackets: Nested",
+    description = "Nested bracket transitions without words or numbers",
+    exercises = {
+      "([]) {<>} [()] <{}> ([]) {<>} [()] <{}>",
+      "({[]}) <{()}> ([{}]) <([])> ({[]}) <{()}>",
+      "(([])) {{<>}} [[{}]] <<()>> (([])) {{<>}}",
+      "()[{}] <>() {}[]() <>{}[] ()[{}] <>()",
+      "({}) [<>] (() ) {{}} [()] <{}> ({}) [<>]",
+      "[({<>})] <[{()}]> [({<>})] <[{()}]>",
+    },
+  },
+  {
+    id = "symbols_intro",
+    name = "Symbols: Intro",
+    description = "Core punctuation and operators only, no letters or digits",
+    exercises = {
+      "! ? . , ; : ! ? . , ; : ! ? . , ; :",
+      "+ - * / = + - * / = + - * / =",
+      "_ - + = _ - + = _ - + =",
+      "| | || || & & && && ! ! !! !!",
+      ". , . , ; : ; : / / \\ \\",
+      "@ # $ % ^ & * @ # $ % ^ & *",
+    },
+  },
+  {
+    id = "symbols_shifted",
+    name = "Symbols: Shifted Row",
+    description = "Shifted punctuation only, isolated from text",
+    exercises = {
+      "!@#$%^&*() !@#$%^&*() !@#$%^&*()",
+      "! ! @ @ # # $ $ % % ^ ^ & & * * ( ( ) )",
+      "~ _ + | : \" < > ? ~ _ + | : \" < > ?",
+      "~~ __ ++ || :: \"\" << >> ?? ~~ __ ++ ||",
+      "!@# $%^ &*() !@# $%^ &*() !@# $%^ &*()",
+      "<><> ???? |||| ++++ ____ :::: \"\"\"\"",
+    },
+  },
+  {
+    id = "symbols_pairs",
+    name = "Symbols: Pairs & Runs",
+    description = "Common symbol pairs and repeated transitions without words",
+    exercises = {
+      "-> -> => => == == != != <= <= >= >=",
+      "++ ++ -- -- ** ** // // || || && &&",
+      ":: :: .. .. ?? ?? !! !! ## ## @@ @@",
+      "-> => == != <= >= ++ -- ** // || &&",
+      "... ::: ;;; ,,, !!! ??? --- === +++",
+      "|-| |_| /-/ \\-/ <-> <=> |-| |_| /-/",
+    },
+  },
+  {
     id = "symbols",
     name = "Symbols & Punctuation",
-    description = "Shifted keys and punctuation marks",
+    description = "Mixed punctuation in context with text and numbers",
     exercises = {
       "!@#$%^&*() !@#$%^&*() !@#$%^&*()",
       "a + b = c; x - y * z / w % 2;",
@@ -86,7 +151,7 @@ M.categories = {
   {
     id = "brackets",
     name = "Brackets & Pairs",
-    description = "All bracket types used in programming",
+    description = "Bracket practice integrated with text and code-like content",
     exercises = {
       "(a) [b] {c} <d> (e) [f] {g} <h>",
       "fn(x, y) -> { vec![1, 2, 3] }",
@@ -558,6 +623,66 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
       "arr[0] = obj.key || 'default';",
     },
   },
+  {
+    id = "accuracy_burst",
+    name = "Accuracy: One-Strike Bursts",
+    description = "Fail on first error - short words, pure precision",
+    no_backspace = true,
+    error_limit = 0,
+    repeat_until_clean = true,
+    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", min_words = 5, max_words = 8 },
+    exercises = {
+      "slow calm exact clean",
+      "press each key with care",
+      "think first type once",
+      "small drills reveal mistakes",
+      "accuracy before speed always",
+    },
+  },
+  {
+    id = "accuracy_home",
+    name = "Accuracy: Home Row Gate",
+    description = "Fail on first error - home row discipline only",
+    no_backspace = true,
+    error_limit = 0,
+    repeat_until_clean = true,
+    gen_config = { chars = "asdfghjkl;", min_words = 8, max_words = 12 },
+    exercises = {
+      "add dash flask glad shall glass",
+      "sad lads ask half glass",
+      "a glad lad shall add salad",
+      "flash glass lads shall dash",
+    },
+  },
+  {
+    id = "accuracy_words",
+    name = "Accuracy: Two-Strike Words",
+    description = "Two strikes only - longer word drills with real pressure",
+    no_backspace = true,
+    error_limit = 1,
+    repeat_until_clean = true,
+    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", min_words = 14, max_words = 20 },
+    exercises = {
+      "accuracy grows when every keystroke is deliberate and intentional",
+      "slow down enough to stay precise and the speed will return later",
+      "you cannot build reliable muscle memory on top of repeated mistakes",
+      "careful repetitions matter more than rushing through another exercise",
+    },
+  },
+  {
+    id = "accuracy_symbols",
+    name = "Accuracy: Symbols Gate",
+    description = "Fail on first error - symbols and brackets under pressure",
+    no_backspace = true,
+    error_limit = 0,
+    repeat_until_clean = true,
+    exercises = {
+      "() {} [] <> () {} [] <>",
+      "arr[0] = obj.key || 'default';",
+      "fn(x) -> { [a, b, c] }",
+      "(a + b) * (c - d) / (e % f)",
+    },
+  },
 
   -- Focused special character drilling
   {
@@ -732,6 +857,78 @@ function M.generate_combo_exercise(category_id)
   end
 
   return combos
+end
+
+M.reaction_categories = {
+  {
+    id = "reaction_alnum",
+    name = "Letters & Digits",
+    description = "Single-key letters and numbers without symbols mixed in",
+    prompt_count = 50,
+    prompt_pool = {
+      "a", "s", "d", "f", "j", "k", "l",
+      "q", "w", "e", "r", "u", "i", "o", "p",
+      "z", "x", "c", "v", "n", "m",
+      "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
+    },
+  },
+  {
+    id = "reaction_brackets",
+    name = "Brackets Only",
+    description = "Single-key bracket recognition: (), [], {}, <>",
+    prompt_count = 50,
+    prompt_pool = { "(", ")", "[", "]", "{", "}", "<", ">" },
+  },
+  {
+    id = "reaction_symbols",
+    name = "Symbols Only",
+    description = "Operators and punctuation without letters or digits",
+    prompt_count = 50,
+    prompt_pool = { "!", "@", "#", "$", "%", "^", "&", "*", "-", "_", "+", "=", "/", "\\", "|", ";", ":", ",", ".", "?" },
+  },
+  {
+    id = "reaction_code",
+    name = "Code Punctuation",
+    description = "Mixed brackets and operators common in code",
+    prompt_count = 50,
+    prompt_pool = { "(", ")", "[", "]", "{", "}", "<", ">", "=", "+", "-", "*", "/", "_", "!", "&", "|", ";", ":", ",", "." },
+  },
+}
+
+function M.get_reaction_categories()
+  return M.reaction_categories
+end
+
+function M.get_reaction_category(id)
+  for _, cat in ipairs(M.reaction_categories) do
+    if cat.id == id then
+      return cat
+    end
+  end
+  return nil
+end
+
+function M.generate_reaction_exercise(category_id)
+  local cat = M.get_reaction_category(category_id)
+  if not cat then
+    return nil
+  end
+
+  local prompts = {}
+  local last_key = nil
+  for i = 1, (cat.prompt_count or 50) do
+    local next_key
+    local attempts = 0
+    repeat
+      next_key = cat.prompt_pool[math.random(1, #cat.prompt_pool)]
+      attempts = attempts + 1
+    until next_key ~= last_key or #cat.prompt_pool <= 1 or attempts > 10
+
+    prompts[i] = { key = next_key, display = next_key }
+    last_key = next_key
+  end
+
+  return prompts
 end
 
 return M

@@ -106,6 +106,13 @@ local raw = table.concat({
   "economic eighteen election electric eligible emission emphasis employee engineer enormous entirely entrance envelope entirely equipped estimate evaluate eventual everyone evidence exchange exciting exercise expanded expected explicit extended external",
   "facebook facility familiar favorite feedback festival Filipino findings finished flagship flexible floating focusing football forecast formerly formula fourteen fragment friendly frontier fullback function physical producer progress",
   "generate governor graduate graphics guardian guidance hardware headline heritage highland homepage honestly hospital humanity hundreds identify illusion imminent immunity imperial incident included increase indicate indirect industry inferior infinite informed inherent initiate innocent inspired instance integral interact interest internal interval investor isolated judgment keyboard language laughter leverage lifetime likewise literary location lockdown magnetic maintain majority managing marathon material measured mechanic medicine memorial merchant midnight military minimize minister minority moderate molecule momentum monopoly moreover mortgage mountain multiple multiply mushroom mystery national navigate neighbor notebook northern numerous obituary obstacle occasion offering official opponent opposing optional ordinary organize original orthodox outbreak overcome overhead overlook overtime overview painting parallel particle patience personal physical platform pleasure plunging pointing politics populate portable portrait position positive possible possibly powerful practice precious premiere presence pressing pressure previous priority probably producer profound progress properly property proposal prospect protocol province provider province publicly purchase pursuing quantity question reaction recently recorded recovery redesign regional register relation relative reliable religion remember repeated reporter republic required research resident resource response restrict reversal revision romantic rotation scenario schedule seasonal security semester sentence separate sequence sergeant sessions severity shooting shortage shoulder shutdown sideways simplify simulate singular sleeping slightly snapshot software solution somebody somewhat southern speaking specific spending sporting standard standing starting stepping stimulus stopping straight strategy strength striking strongly struggle suddenly suitable superior supposed surprise surround survival sweeping swimming symptom teaching terminal terrible thinking thirteen thorough thousand thriller tracking transfer treasure treating tropical troubled tutorial umbrella uncommon underway unlawful unlikely unlikely unrelated upcoming updating upstream valuable variable vertical victoria violence visiting volatile volatile warranty weakness whenever wherever wildlife wireless withdraw woodland workshop yourself",
+
+  -- Programming verbs and common engineering actions
+  "build cache catch check clone close code commit debug deploy fetch index input issue patch parse print probe queue raise retry scope serve spawn split stack start store trace train",
+  "apply await bind branch build clear clone close debug defer fetch flush frame grant input merge patch parse probe query queue reset route scope serve spawn stack throw trace train write",
+  "abort alias assign batch begin break build cache check clean clone close commit debug defer deploy draft fetch guard index insert issue label limit merge model mount parse patch pivot print query raise refit reply reset route scope search serve setup share shift sort split stage start store style trace train treat trigger update usage validate write",
+  "compile connect decode define delete deploy derive encode export extend filter format import insert invoke iterate launch render return review search select submit switch toggle unpack update upload validate",
+  "allocate assemble automate calculate configure construct deserialize dispatch document enumerate generate integrate maintain migrate navigate normalize optimize paginate populate reconcile refactor register serialize simplify synchronize transform translate validate visualize",
 }, " ")
 
 -- Parsed word list (lazy init)
@@ -175,13 +182,28 @@ function M.combo(chars, length)
   return table.concat(result)
 end
 
+local function count_focus_chars(text, focus_set)
+  local count = 0
+  for i = 1, #text do
+    if focus_set[text:sub(i, i)] then
+      count = count + 1
+    end
+  end
+  return count
+end
+
+local function build_focus_combo(chars, focus, length)
+  return M.combo(focus .. focus .. chars, length)
+end
+
 --- Generate a complete random exercise.
---- @param opts { chars: string, focus_chars?: string, min_focus_density?: number, min_words?: number, max_words?: number }
+--- @param opts { chars: string, focus_chars?: string, min_focus_density?: number, min_focus_occurrences?: number, min_words?: number, max_words?: number }
 --- @return string
 function M.generate(opts)
   local chars = opts.chars or "abcdefghijklmnopqrstuvwxyz"
   local focus = opts.focus_chars
   local min_density = opts.min_focus_density
+  local min_focus_occurrences = opts.min_focus_occurrences or 0
   local min_words = opts.min_words or 10
   local max_words = opts.max_words or 20
 
@@ -236,22 +258,35 @@ function M.generate(opts)
   end
 
   local result = {}
+  local focus_set = focus and #focus > 0 and make_set(focus) or nil
+  local focus_hits = 0
   for i = 1, num_words do
-    if math.random() < combo_ratio or #pool == 0 then
-      -- Generate combo, weight focus chars if present
-      local combo_chars = chars
-      if focus and #focus > 0 and math.random() < 0.5 then
-        -- Double the focus chars in the pool to weight them
-        combo_chars = focus .. focus .. chars
-      end
-      result[i] = M.combo(combo_chars, math.random(2, 5))
+    local token
+    local force_focus = focus_set and (
+      i <= math.min(3, num_words)
+      or focus_hits < min_focus_occurrences
+      or (i % 4 == 0 and math.random() < 0.7)
+    )
+
+    if (math.random() < combo_ratio or #pool == 0) and (not force_focus or not focus_set) then
+      token = M.combo(chars, math.random(2, 5))
     else
-      -- Pick a word, prefer focus words when available
-      if #focus_pool > 0 and math.random() < 0.55 then
-        result[i] = focus_pool[math.random(1, #focus_pool)]
+      if force_focus and focus_set then
+        if #focus_pool > 0 and math.random() < 0.7 then
+          token = focus_pool[math.random(1, #focus_pool)]
+        else
+          token = build_focus_combo(chars, focus, math.random(2, 5))
+        end
+      elseif #focus_pool > 0 and math.random() < 0.55 then
+        token = focus_pool[math.random(1, #focus_pool)]
       else
-        result[i] = pool[math.random(1, #pool)]
+        token = pool[math.random(1, #pool)]
       end
+    end
+
+    result[i] = token
+    if focus_set then
+      focus_hits = focus_hits + count_focus_chars(token, focus_set)
     end
   end
 

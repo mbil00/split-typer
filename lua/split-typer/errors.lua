@@ -32,6 +32,24 @@ local function save_data()
   storage.write_json(errors_file, _data)
 end
 
+local function make_set(chars)
+  local set = {}
+  for i = 1, #chars do
+    set[chars:sub(i, i)] = true
+  end
+  return set
+end
+
+local function append_unique_chars(out, seen, chars, allowed)
+  for i = 1, #chars do
+    local ch = chars:sub(i, i)
+    if not seen[ch] and (not allowed or allowed[ch]) then
+      seen[ch] = true
+      out[#out + 1] = ch
+    end
+  end
+end
+
 --- Record errors from a completed exercise session.
 --- @param error_log { expected: string, actual: string, pos: number }[]
 --- @param char_map { char: string, is_newline: boolean }[]
@@ -263,34 +281,248 @@ function M.format_session_errors(error_log)
   return lines, highlights
 end
 
+local function build_error_positions(error_log)
+  local positions = {}
+  for _, err in ipairs(error_log) do
+    positions[err.pos] = true
+  end
+  return positions
+end
+
+--- Get worst characters for a single session.
+--- @param error_log { expected: string, actual: string, pos: number }[]
+--- @param n? number
+--- @return { char: string, count: number, typed_as: table }[]
+function M.get_session_worst_chars(error_log, n)
+  local tally = {}
+  for _, err in ipairs(error_log) do
+    local item = tally[err.expected]
+    if not item then
+      item = { char = err.expected, count = 0, typed_as = {} }
+      tally[err.expected] = item
+    end
+    item.count = item.count + 1
+    item.typed_as[err.actual] = (item.typed_as[err.actual] or 0) + 1
+  end
+
+  local items = {}
+  for _, item in pairs(tally) do
+    items[#items + 1] = item
+  end
+  table.sort(items, function(a, b)
+    return a.count > b.count
+  end)
+
+  local out = {}
+  for i = 1, math.min(n or 5, #items) do
+    out[#out + 1] = items[i]
+  end
+  return out
+end
+
+--- Get worst bigrams for a single session.
+--- @param error_log { expected: string, actual: string, pos: number }[]
+--- @param char_map { char: string, is_newline: boolean }[]
+--- @param n? number
+--- @param max_pos? number
+--- @return { bigram: string, total: number, errors: number, error_rate: number }[]
+function M.get_session_worst_bigrams(error_log, char_map, n, max_pos)
+  if not char_map then
+    return {}
+  end
+
+  local error_positions = build_error_positions(error_log)
+  local tally = {}
+  local prev_char = nil
+  local prev_pos = nil
+  local limit = math.min(max_pos or #char_map, #char_map)
+  for i = 1, limit do
+    local entry = char_map[i]
+    if entry.is_newline then
+      prev_char = nil
+      prev_pos = nil
+      goto continue
+    end
+
+    if prev_char then
+      local bigram = prev_char .. entry.char
+      local item = tally[bigram]
+      if not item then
+        item = { bigram = bigram, total = 0, errors = 0, error_rate = 0 }
+        tally[bigram] = item
+      end
+      item.total = item.total + 1
+      if error_positions[prev_pos] or error_positions[i] then
+        item.errors = item.errors + 1
+      end
+    end
+
+    prev_char = entry.char
+    prev_pos = i
+    ::continue::
+  end
+
+  local items = {}
+  for _, item in pairs(tally) do
+    if item.errors > 0 then
+      item.error_rate = item.errors / item.total
+      items[#items + 1] = item
+    end
+  end
+  table.sort(items, function(a, b)
+    if a.error_rate == b.error_rate then
+      return a.errors > b.errors
+    end
+    return a.error_rate > b.error_rate
+  end)
+
+  local out = {}
+  for i = 1, math.min(n or 5, #items) do
+    out[#out + 1] = items[i]
+  end
+  return out
+end
+
+--- Summarize first-half vs second-half session performance.
+--- @param key_events { t: number, kind: string, correct?: boolean }[]
+--- @return table|nil
+function M.get_session_decay(key_events)
+  if not key_events or #key_events < 2 then
+    return nil
+  end
+
+  local start_t = key_events[1].t
+  local end_t = key_events[#key_events].t
+  if not start_t or not end_t or end_t <= start_t then
+    return nil
+  end
+  local midpoint = start_t + ((end_t - start_t) / 2)
+
+  local function summarize(bucket)
+    local typed = 0
+    local correct = 0
+    local mistakes = 0
+    local backspaces = 0
+    local first_t = nil
+    local last_t = nil
+
+    for _, event in ipairs(bucket) do
+      first_t = first_t or event.t
+      last_t = event.t
+      if event.kind == "type" then
+        typed = typed + 1
+        if event.correct then
+          correct = correct + 1
+        else
+          mistakes = mistakes + 1
+        end
+      elseif event.kind == "backspace" then
+        backspaces = backspaces + 1
+      end
+    end
+
+    local elapsed = 0
+    if first_t and last_t and last_t > first_t then
+      elapsed = (last_t - first_t) / 1e9
+    end
+    local accuracy = (correct + mistakes) > 0 and (correct / (correct + mistakes) * 100) or 100
+    local efficiency = (typed + backspaces) > 0 and (correct / (typed + backspaces) * 100) or 100
+    local wpm = elapsed > 0 and ((correct / 5) / (elapsed / 60)) or 0
+
+    return {
+      typed = typed,
+      correct = correct,
+      mistakes = mistakes,
+      backspaces = backspaces,
+      accuracy = accuracy,
+      efficiency = efficiency,
+      wpm = wpm,
+    }
+  end
+
+  local first_half = {}
+  local second_half = {}
+  for _, event in ipairs(key_events) do
+    if event.t <= midpoint then
+      first_half[#first_half + 1] = event
+    else
+      second_half[#second_half + 1] = event
+    end
+  end
+
+  if #first_half == 0 or #second_half == 0 then
+    return nil
+  end
+
+  local first = summarize(first_half)
+  local second = summarize(second_half)
+  return {
+    first = first,
+    second = second,
+    wpm_delta = second.wpm - first.wpm,
+    accuracy_delta = second.accuracy - first.accuracy,
+    efficiency_delta = second.efficiency - first.efficiency,
+  }
+end
+
+--- Build an adaptive focus-char string from seed chars and the user's weak keys.
+--- @param opts? { allowed_chars?: string, seed_chars?: string, limit?: number, min_total?: number }
+--- @return string
+function M.get_adaptive_focus_chars(opts)
+  opts = opts or {}
+  local allowed = opts.allowed_chars and make_set(opts.allowed_chars) or nil
+  local out = {}
+  local seen = {}
+
+  append_unique_chars(out, seen, opts.seed_chars or "", allowed)
+
+  local worst = M.get_worst_chars(opts.limit or 6, opts.min_total or 15)
+  for _, wc in ipairs(worst) do
+    append_unique_chars(out, seen, wc.char, allowed)
+    local confused = {}
+    for actual, count in pairs(wc.confused_with or {}) do
+      confused[#confused + 1] = { actual = actual, count = count }
+    end
+    table.sort(confused, function(a, b)
+      return a.count > b.count
+    end)
+    for i = 1, math.min(2, #confused) do
+      append_unique_chars(out, seen, confused[i].actual, allowed)
+    end
+  end
+
+  return table.concat(out)
+end
+
 --- Generate a targeted exercise focusing on the user's weakest characters.
---- @param opts? { min_words?: number, max_words?: number }
+--- @param opts? { min_words?: number, max_words?: number, allowed_chars?: string, seed_chars?: string, min_focus_occurrences?: number }
 --- @return string exercise_text
 --- @return string description
 function M.generate_targeted_exercise(opts)
   opts = opts or {}
   local worst = M.get_worst_chars(5, 15)
+  local allowed_chars = opts.allowed_chars or "abcdefghijklmnopqrstuvwxyz"
+  local adaptive_focus = M.get_adaptive_focus_chars({
+    allowed_chars = allowed_chars,
+    seed_chars = opts.seed_chars or "",
+    limit = 6,
+    min_total = 15,
+  })
 
   if #worst == 0 then
     -- Not enough data, fall back to general exercise
     return words.generate({
-      chars = "abcdefghijklmnopqrstuvwxyz",
+      chars = allowed_chars,
       min_words = opts.min_words or 12,
       max_words = opts.max_words or 20,
     }), "General practice (not enough error data yet)"
   end
 
-  -- Build focus chars from worst characters
-  local focus = {}
-  for _, wc in ipairs(worst) do
-    focus[#focus + 1] = wc.char
-  end
-  local focus_str = table.concat(focus)
-
   local text = words.generate({
-    chars = "abcdefghijklmnopqrstuvwxyz",
-    focus_chars = focus_str,
+    chars = allowed_chars,
+    focus_chars = adaptive_focus,
     min_focus_density = 0.25,
+    min_focus_occurrences = opts.min_focus_occurrences or math.max(10, #adaptive_focus * 3),
     min_words = opts.min_words or 12,
     max_words = opts.max_words or 20,
   })

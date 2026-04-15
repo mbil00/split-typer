@@ -8,6 +8,16 @@ local function load_history()
   return storage.read_json(storage.data_path("history.json"), {})
 end
 
+local function get_timed_history(history)
+  local timed = {}
+  for _, item in ipairs(history) do
+    if item.timed and item.timed_postmortem then
+      timed[#timed + 1] = item
+    end
+  end
+  return timed
+end
+
 -- Render an ASCII chart from a list of values.
 -- Returns lines (strings) and highlights ({ line_offset, col_start, col_end, hl_group }).
 local function render_chart(values, width, height, thresholds)
@@ -266,6 +276,109 @@ function M.render(buf, ns, win, opts)
       add(line)
       local score_hl = (b.score or 0) >= 400 and "SplitTyperGood" or ((b.score or 0) >= 100 and "SplitTyperOk" or "SplitTyperStats")
       add_hl(#line - #tostring(b.score or 0), #line, score_hl)
+    end
+    add("")
+  end
+
+  local timed_history = get_timed_history(history)
+  if #timed_history > 0 then
+    add_sep("Timed Postmortem Trends")
+
+    local count = 0
+    local wpm_delta_sum = 0
+    local acc_delta_sum = 0
+    local eff_delta_sum = 0
+    local collapse_count = 0
+    local char_counts = {}
+    local bigram_counts = {}
+
+    for _, item in ipairs(timed_history) do
+      local pm = item.timed_postmortem or {}
+      local decay = pm.decay
+      if decay then
+        count = count + 1
+        wpm_delta_sum = wpm_delta_sum + (decay.wpm_delta or 0)
+        acc_delta_sum = acc_delta_sum + (decay.accuracy_delta or 0)
+        eff_delta_sum = eff_delta_sum + (decay.efficiency_delta or 0)
+        if (decay.wpm_delta or 0) <= -5 or (decay.accuracy_delta or 0) <= -3 or (decay.efficiency_delta or 0) <= -5 then
+          collapse_count = collapse_count + 1
+        end
+      end
+
+      for _, wc in ipairs(pm.worst_chars or {}) do
+        char_counts[wc.char] = (char_counts[wc.char] or 0) + 1
+      end
+      for _, wb in ipairs(pm.worst_bigrams or {}) do
+        bigram_counts[wb.bigram] = (bigram_counts[wb.bigram] or 0) + 1
+      end
+    end
+
+    if count > 0 then
+      local avg_wpm_delta = math.floor(wpm_delta_sum / count)
+      local avg_acc_delta = math.floor((acc_delta_sum / count) * 10) / 10
+      local avg_eff_delta = math.floor((eff_delta_sum / count) * 10) / 10
+      local drift_line = string.format(
+        "    Avg second-half drift: %+d WPM  %+0.1f acc  %+0.1f eff",
+        avg_wpm_delta,
+        avg_acc_delta,
+        avg_eff_delta
+      )
+      add(drift_line)
+      local drift_hl = "SplitTyperGood"
+      if avg_wpm_delta <= -5 or avg_acc_delta <= -3 or avg_eff_delta <= -5 then
+        drift_hl = "SplitTyperBad"
+      elseif avg_wpm_delta < 0 or avg_acc_delta < 0 or avg_eff_delta < 0 then
+        drift_hl = "SplitTyperOk"
+      end
+      add_hl(28, #drift_line, drift_hl)
+
+      local collapse_rate = math.floor((collapse_count / count) * 100)
+      local collapse_line = string.format("    Sessions with clear late-session drop: %d/%d (%d%%)", collapse_count, count, collapse_rate)
+      add(collapse_line)
+      add_hl(39, #collapse_line, collapse_rate >= 50 and "SplitTyperBad" or (collapse_rate >= 25 and "SplitTyperOk" or "SplitTyperGood"))
+    else
+      add("    Not enough timed-session decay data yet")
+      add_hl(0, #lines[#lines], "SplitTyperPending")
+    end
+
+    local function sort_counts(map)
+      local items = {}
+      for key, n in pairs(map) do
+        items[#items + 1] = { key = key, count = n }
+      end
+      table.sort(items, function(a, b)
+        if a.count == b.count then
+          return a.key < b.key
+        end
+        return a.count > b.count
+      end)
+      return items
+    end
+
+    local sorted_chars = sort_counts(char_counts)
+    if #sorted_chars > 0 then
+      add("    Most common timed weak keys:")
+      add_hl(0, #lines[#lines], "SplitTyperSep")
+      for i = 1, math.min(5, #sorted_chars) do
+        local item = sorted_chars[i]
+        local name = item.key == " " and "Space" or item.key
+        local line = string.format("      '%s' appeared in %d timed postmortems", name, item.count)
+        add(line)
+        add_hl(6, 9, "SplitTyperBad")
+      end
+    end
+
+    local sorted_bigrams = sort_counts(bigram_counts)
+    if #sorted_bigrams > 0 then
+      add("")
+      add("    Most common timed weak bigrams:")
+      add_hl(0, #lines[#lines], "SplitTyperSep")
+      for i = 1, math.min(5, #sorted_bigrams) do
+        local item = sorted_bigrams[i]
+        local line = string.format("      %s appeared in %d timed postmortems", item.key, item.count)
+        add(line)
+        add_hl(6, 8, "SplitTyperBad")
+      end
     end
     add("")
   end
