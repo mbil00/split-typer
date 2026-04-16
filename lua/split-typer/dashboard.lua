@@ -437,9 +437,68 @@ function M.render(buf, ns, win, opts)
 
     for i = 1, math.min(5, #err_summary.worst_bigrams) do
       local wb = err_summary.worst_bigrams[i]
-      local line = string.format("    '%s'  %5.1f%% error rate  (%d/%d)", wb.bigram, wb.error_rate * 100, wb.errors, wb.total)
+      local class_note = ""
+      if wb.class_names and #wb.class_names > 0 then
+        class_note = "  " .. table.concat(wb.class_names, ", ")
+      end
+      local line = string.format("    '%s'  %5.1f%% error rate  (%d/%d)%s", wb.bigram, wb.error_rate * 100, wb.errors, wb.total, class_note)
       add(line)
       add_hl(4, 8, "SplitTyperBad")
+    end
+    add("")
+  end
+
+  if err_summary.has_data and #err_summary.worst_transition_classes > 0 then
+    add_sep("Weak Movement Types")
+
+    for i = 1, math.min(5, #err_summary.worst_transition_classes) do
+      local wc = err_summary.worst_transition_classes[i]
+      local line = string.format(
+        "    %s  %5.1f%% error rate  (%d/%d)  sample: '%s'",
+        wc.name,
+        wc.error_rate * 100,
+        wc.errors,
+        wc.total,
+        wc.sample
+      )
+      add(line)
+      add_hl(4, 4 + #wc.name, "SplitTyperBad")
+    end
+    add("    Raw severity only. A transition can belong to multiple movement types, so these rates are not additive.")
+    add_hl(0, #lines[#lines], "SplitTyperPending")
+    add("")
+
+    local adaptive = errors.get_worst_transition_classes(5, 10, { weighted = true })
+    if #adaptive > 0 then
+      add("    Auto-focus priority:")
+      add_hl(0, #lines[#lines], "SplitTyperSep")
+      for i = 1, math.min(5, #adaptive) do
+        local wc = adaptive[i]
+        local line = string.format(
+          "      %s  score %.3f  evidence %.2f  %d patterns  sample: '%s'",
+          wc.name,
+          wc.auto_score or 0,
+          wc.evidence_score or 0,
+          wc.distinct_examples or 0,
+          wc.sample
+        )
+        add(line)
+        add_hl(6, 6 + #wc.name, i == 1 and "SplitTyperGood" or "SplitTyperOk")
+      end
+      add("    Auto focus uses class weights and evidence quality, so this order can differ from raw error rate.")
+      add_hl(0, #lines[#lines], "SplitTyperPending")
+      add("")
+    end
+  end
+
+  if err_summary.has_data and #err_summary.worst_trigrams > 0 then
+    add_sep("Transition Chains")
+
+    for i = 1, math.min(4, #err_summary.worst_trigrams) do
+      local wt = err_summary.worst_trigrams[i]
+      local line = string.format("    '%s'  %5.1f%% error rate  (%d/%d)", wt.trigram, wt.error_rate * 100, wt.errors, wt.total)
+      add(line)
+      add_hl(4, 9, "SplitTyperBad")
     end
     add("")
   end

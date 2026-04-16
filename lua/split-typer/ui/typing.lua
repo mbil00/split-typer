@@ -264,6 +264,10 @@ function M.update_stats_header(ctx)
     cat_name = level and ("Course: " .. level.name) or cat_name
   elseif state.timed_mode then
     cat_name = "Timed Practice"
+  elseif state.category_id == "targeted_practice" then
+    cat_name = "Weak Key Practice"
+  elseif state.category_id == "transition_practice" then
+    cat_name = "Weak Transitions"
   end
   local progress = string.format("%d/%d", state.pos, #state.char_map)
   if state.timed_mode then
@@ -346,13 +350,21 @@ function M.update_stats_header(ctx)
       and " Timer started on first keypress"
       or " Timer starts on first keypress"
 
+  local meta_line = timer_note
+  local footer_note = nil
+  if state.generated_desc and #state.generated_desc > 0 then
+    meta_line = " " .. state.generated_desc
+    footer_note = timer_note
+  end
+
   state.header_extmark = vim.api.nvim_buf_set_extmark(state.buf, state.ns, 0, 0, {
     id = state.header_extmark,
     virt_lines_above = true,
     virt_lines = {
       title_line,
       stats_line,
-      { { timer_note, "SplitTyperPending" } },
+      { { meta_line, "SplitTyperPending" } },
+      footer_note and { { footer_note, "SplitTyperPending" } } or { { "", "" } },
       { { " " .. string.rep("\u{2500}", 60), "SplitTyperSep" } },
       { { "", "" } },
     },

@@ -7,6 +7,8 @@ A Neovim plugin for practicing touch typing on split keyboards, built around the
 - **43 free-play categories** grouped into general drills, characters, code, prose, finger isolation, precision work, and hard accuracy gates
 - **12-level course** with progressive key introduction, streak-based passing, no-backspace mode, and max-error thresholds
 - **Weak key practice** that uses your saved error profile to bias drills toward your worst characters
+- **Weak transition practice** that targets your hardest letter-to-letter movements with warmups and adaptive word drills
+- **Movement classification** that highlights same-finger, cross-center, symbol, and number-row trouble patterns
 - **Timed practice** with adaptive 1-5 minute sessions that keep generating text until the timer expires
 - **Combo trainer** with 5 modifier-drill categories for `Ctrl`, `Alt`, numbers, and mixed combinations
 - **Character reaction drill** with 4 prompt pools and per-hit reaction timing
@@ -46,6 +48,7 @@ vim.opt.rtp:prepend("/path/to/split-typer")
 :SplitTyper                   " Open the main menu
 :SplitTyper course            " Jump to the touch typing course
 :SplitTyper dashboard         " View the stats dashboard
+:SplitTyper transitions       " Open weak-transition practice
 :SplitTyper combos            " Open the combo trainer
 :SplitTyper timed             " Open timed practice
 :SplitTyper reaction          " Open the reaction-drill menu
@@ -59,6 +62,7 @@ The command supports completion for built-in entry points and category IDs.
 
 - `[c]` Touch Typing Course
 - `[t]` Weak Key Practice
+- `[w]` Weak Transitions
 - `[s]` Stats Dashboard
 - `[k]` Combo Trainer
 - `[x]` Character Reaction
@@ -88,6 +92,16 @@ The command supports completion for built-in entry points and category IDs.
 
 - Builds drills from your saved weakest characters
 - Falls back to general practice until enough error data has been collected
+
+### Weak Transition Practice
+
+- Builds drills from your saved hardest bigrams
+- Labels those failures by movement type, such as same-finger or cross-center transitions
+- Prioritizes the single weakest movement class first, then selects bigrams from that class
+- Uses class-specific drill shapes, such as tighter repeats for same-finger work or more line-break/space rhythm for thumb-cluster work
+- Mixes in small class-specific template banks, such as code punctuation for symbol jumps or short line-break patterns for thumb work
+- Starts with short repeated warmups, then shifts into adaptive word drills
+- Falls back to weak-key or general practice until enough transition data has been collected
 
 ### Timed Practice
 
@@ -122,6 +136,8 @@ The command supports completion for built-in entry points and category IDs.
 - Result screens support quick follow-up actions such as next exercise, retry, timed menu, main menu, and stats dashboard
 - Session mistakes are summarized by problem keys and common substitutions
 - The stats dashboard shows long-term trends, best scores by category, weakest keys, hardest transitions, activity, and practice streaks
+- The dashboard also highlights difficult transition chains so you can spot repeated movement failures, not just single-key misses
+- Weak transitions are grouped into movement types so you can see whether the problem is hand alternation, same-finger repeats, symbol jumps, or center-column crossings
 
 ## Data Storage
 

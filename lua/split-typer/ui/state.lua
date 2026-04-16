@@ -11,6 +11,8 @@ M.state = {
   mode = "freeplay",
   course_level = nil,
   target = nil,
+  generated_desc = nil,
+  transition_focus_class = nil,
   char_map = nil,
   input = {},
   pos = 0,
@@ -55,6 +57,8 @@ M.state = {
 
 local function reset_session_state(state)
   state.target = nil
+  state.generated_desc = nil
+  state.transition_focus_class = nil
   state.char_map = nil
   state.input = {}
   state.pos = 0
@@ -127,6 +131,8 @@ function M.reset_typing_session(state, text, opts)
   opts = opts or {}
   reset_session_state(state)
   state.target = text
+  state.generated_desc = opts.generated_desc
+  state.transition_focus_class = opts.transition_focus_class
   state.char_map = M.build_char_map(text)
   state.category_id = opts.category_id
   state.exercise_idx = opts.exercise_idx

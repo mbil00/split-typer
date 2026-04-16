@@ -196,6 +196,151 @@ local function build_focus_combo(chars, focus, length)
   return M.combo(focus .. focus .. chars, length)
 end
 
+local function word_has_transition(word, transition)
+  return word:find(transition, 1, true) ~= nil
+end
+
+local function count_transition_hits(text, transitions)
+  local hits = 0
+  for _, transition in ipairs(transitions) do
+    local start = 1
+    while true do
+      local s = text:find(transition, start, true)
+      if not s then
+        break
+      end
+      hits = hits + 1
+      start = s + 1
+    end
+  end
+  return hits
+end
+
+local function build_transition_combo(transitions)
+  local transition = transitions[math.random(1, #transitions)]
+  local fragments = {
+    transition,
+    transition .. transition,
+    transition:sub(2, 2) .. transition,
+    transition .. transition:sub(1, 1),
+  }
+  return fragments[math.random(1, #fragments)]
+end
+
+local function make_token_with_transition(transition, style)
+  style = style or "default"
+  local a = transition:sub(1, 1)
+  local b = transition:sub(2, 2)
+
+  if style == "same_finger" then
+    local fragments = {
+      transition,
+      transition .. transition,
+      a .. transition .. a,
+      b .. transition .. b,
+      a .. b .. a .. b,
+    }
+    return fragments[math.random(1, #fragments)]
+  elseif style == "cross_center" then
+    local fragments = {
+      transition,
+      transition .. transition,
+      "t" .. transition,
+      transition .. "y",
+      a .. transition .. b,
+    }
+    return fragments[math.random(1, #fragments)]
+  elseif style == "thumb_cluster" then
+    local fragments = {
+      transition,
+      transition .. " ",
+      " " .. transition,
+      transition .. "\n" .. transition,
+      a .. " " .. b,
+    }
+    return fragments[math.random(1, #fragments)]
+  elseif style == "symbol_jump" then
+    local fragments = {
+      transition,
+      transition .. transition,
+      "(" .. transition .. ")",
+      "[" .. transition .. "]",
+      transition .. ";",
+    }
+    return fragments[math.random(1, #fragments)]
+  elseif style == "number_row" then
+    local fragments = {
+      transition,
+      transition .. transition,
+      transition .. "0",
+      "1" .. transition,
+      a .. b .. "42",
+    }
+    return fragments[math.random(1, #fragments)]
+  elseif style == "cross_hand" then
+    local fragments = {
+      transition,
+      transition .. transition,
+      a .. transition,
+      transition .. b,
+      a .. b .. a .. b,
+    }
+    return fragments[math.random(1, #fragments)]
+  elseif style == "same_hand" then
+    local fragments = {
+      transition,
+      transition .. transition,
+      a .. transition,
+      b .. transition,
+      a .. a .. b,
+    }
+    return fragments[math.random(1, #fragments)]
+  end
+
+  return build_transition_combo({ transition })
+end
+
+local function token_has_allowed_chars(token, allowed_set)
+  if not allowed_set then
+    return true
+  end
+  for i = 1, #token do
+    local ch = token:sub(i, i)
+    if not allowed_set[ch] then
+      return false
+    end
+  end
+  return true
+end
+
+local function transition_in_token(token, transitions)
+  for _, transition in ipairs(transitions) do
+    if token:find(transition, 1, true) then
+      return true
+    end
+  end
+  return false
+end
+
+local function build_curated_token(transitions, curated_templates, style)
+  if not curated_templates or #curated_templates == 0 then
+    return nil
+  end
+
+  local template = curated_templates[math.random(1, #curated_templates)]
+  local transition = transitions[math.random(1, #transitions)]
+  local a = transition:sub(1, 1)
+  local b = transition:sub(2, 2)
+  template = template:gsub("{transition}", transition)
+  template = template:gsub("{a}", a)
+  template = template:gsub("{b}", b)
+
+  if transition_in_token(template, transitions) then
+    return template
+  end
+  return make_token_with_transition(transition, style)
+end
+
 --- Generate a complete random exercise.
 --- @param opts { chars: string, focus_chars?: string, min_focus_density?: number, min_focus_occurrences?: number, min_words?: number, max_words?: number }
 --- @return string
@@ -288,6 +433,91 @@ function M.generate(opts)
     if focus_set then
       focus_hits = focus_hits + count_focus_chars(token, focus_set)
     end
+  end
+
+  return table.concat(result, " ")
+end
+
+--- Generate text biased toward specific transitions.
+--- @param opts { transitions: string[], min_words?: number, max_words?: number, min_transition_hits?: number, combo_ratio?: number, style?: string, allowed_chars?: string, plain_ratio?: number, newline_ratio?: number, curated_templates?: string[], curated_ratio?: number }
+--- @return string
+function M.generate_transition_drill(opts)
+  opts = opts or {}
+  local transitions = opts.transitions or {}
+  if #transitions == 0 then
+    return M.generate({
+      chars = "abcdefghijklmnopqrstuvwxyz",
+      min_words = opts.min_words or 10,
+      max_words = opts.max_words or 16,
+    })
+  end
+
+  local min_words = opts.min_words or 12
+  local max_words = opts.max_words or 20
+  local min_hits = opts.min_transition_hits or math.max(8, #transitions * 3)
+  local combo_ratio = opts.combo_ratio or 0.22
+  local style = opts.style or "default"
+  local plain_ratio = opts.plain_ratio or 0.35
+  local newline_ratio = opts.newline_ratio or 0
+  local curated_templates = opts.curated_templates or {}
+  local curated_ratio = opts.curated_ratio or 0
+  local allowed_set = opts.allowed_chars and make_set(opts.allowed_chars) or nil
+  local all_words = get_all_words()
+  local transition_pool = {}
+
+  for _, w in ipairs(all_words) do
+    if allowed_set and not token_has_allowed_chars(w, allowed_set) then
+      goto continue_word
+    end
+    for _, transition in ipairs(transitions) do
+      if word_has_transition(w, transition) then
+        transition_pool[#transition_pool + 1] = w
+        break
+      end
+    end
+    ::continue_word::
+  end
+
+  local result = {}
+  local num_words = math.random(min_words, max_words)
+  local transition_hits = 0
+
+  for i = 1, num_words do
+    local force_transition = i <= math.min(4, num_words)
+      or transition_hits < min_hits
+      or (i % 4 == 0 and math.random() < 0.7)
+
+    local token
+    if force_transition then
+      if #curated_templates > 0 and math.random() < curated_ratio then
+        token = build_curated_token(transitions, curated_templates, style)
+      elseif #transition_pool > 0 and math.random() < (1 - combo_ratio) then
+        token = transition_pool[math.random(1, #transition_pool)]
+      else
+        token = make_token_with_transition(transitions[math.random(1, #transitions)], style)
+      end
+    else
+      if #curated_templates > 0 and math.random() < math.max(0.12, curated_ratio * 0.7) then
+        token = build_curated_token(transitions, curated_templates, style)
+      elseif #transition_pool > 0 and math.random() < plain_ratio then
+        token = transition_pool[math.random(1, #transition_pool)]
+      else
+        local attempts = 0
+        repeat
+          token = all_words[math.random(1, #all_words)]
+          attempts = attempts + 1
+        until (not allowed_set or token_has_allowed_chars(token, allowed_set)) or attempts > 40
+        if allowed_set and not token_has_allowed_chars(token, allowed_set) then
+          token = make_token_with_transition(transitions[math.random(1, #transitions)], style)
+        end
+      end
+    end
+
+    result[#result + 1] = token
+    if newline_ratio > 0 and i < num_words and math.random() < newline_ratio then
+      result[#result] = result[#result] .. "\n"
+    end
+    transition_hits = transition_hits + count_transition_hits(token, transitions)
   end
 
   return table.concat(result, " ")

@@ -286,6 +286,10 @@ function M.show_reaction_results()
   screens.show_reaction_results(ctx)
 end
 
+function M.show_transition_menu()
+  screens.show_transition_menu(ctx)
+end
+
 function M.show_menu()
   screens.show_menu(ctx)
 end
@@ -360,11 +364,37 @@ function M.start_targeted_exercise()
   state.mode = "freeplay"
   state.screen = "exercise"
 
-  local text = errs.generate_targeted_exercise({ min_words = 16, max_words = 26, min_focus_occurrences = 14 })
+  local text, desc = errs.generate_targeted_exercise({ min_words = 16, max_words = 26, min_focus_occurrences = 14 })
   state_mod.reset_typing_session(state, text, {
     category_id = "targeted_practice",
     exercise_idx = nil,
     no_backspace = false,
+    generated_desc = desc,
+  })
+
+  window.ensure_window(state, M.cleanup)
+  window.clear_buffer(state)
+  set_buffer_text(text)
+  typing.setup_keymaps(ctx)
+  typing.update_display(ctx)
+end
+
+function M.start_transition_exercise(class_id)
+  state.mode = "freeplay"
+  state.screen = "exercise"
+
+  local text, desc = errs.generate_transition_exercise({
+    class_id = class_id,
+    min_words = 16,
+    max_words = 24,
+    min_transition_hits = 14,
+  })
+  state_mod.reset_typing_session(state, text, {
+    category_id = "transition_practice",
+    exercise_idx = nil,
+    no_backspace = false,
+    generated_desc = desc,
+    transition_focus_class = class_id,
   })
 
   window.ensure_window(state, M.cleanup)
@@ -419,6 +449,9 @@ ctx.actions = {
   show_reaction_results = function()
     M.show_reaction_results()
   end,
+  show_transition_menu = function()
+    M.show_transition_menu()
+  end,
   show_dashboard = function()
     M.show_dashboard()
   end,
@@ -448,6 +481,9 @@ ctx.actions = {
   end,
   start_targeted_exercise = function()
     M.start_targeted_exercise()
+  end,
+  start_transition_exercise = function(class_id)
+    M.start_transition_exercise(class_id)
   end,
   start_timed_session = function(minutes)
     M.start_timed_session(minutes)
@@ -480,6 +516,16 @@ function M.open(category)
     end
     if category == "timed" then
       M.show_timed_menu()
+      return
+    end
+    if category == "transitions" then
+      window.ensure_window(state, M.cleanup)
+      M.show_transition_menu()
+      return
+    end
+    if category == "weak_keys" then
+      window.ensure_window(state, M.cleanup)
+      M.start_targeted_exercise()
       return
     end
 

@@ -837,6 +837,100 @@ function M.show_reaction_results(ctx)
   ctx.window.map(state, "<C-c>", ctx.actions.cleanup)
 end
 
+function M.show_transition_menu(ctx)
+  local state = ctx.state
+  ctx.state_mod.stop_timer(state)
+  state.screen = "transition_menu"
+  state.mode = "freeplay"
+  ctx.window.ensure_window(state, ctx.actions.cleanup)
+  ctx.window.clear_buffer(state)
+
+  local lines = {}
+  local highlights = {}
+  local options = {
+    { key = "a", class_id = nil, name = "Auto Focus", description = "Use your single weakest movement class automatically" },
+  }
+  local class_stats = {}
+  for _, item in ipairs(ctx.errs.get_worst_transition_classes(20, 1)) do
+    class_stats[item.class_id] = item
+  end
+  for _, item in ipairs(ctx.errs.get_transition_class_catalog()) do
+    options[#options + 1] = {
+      key = tostring(#options),
+      class_id = item.id,
+      name = item.name,
+      description = item.description,
+      stat = class_stats[item.id],
+    }
+  end
+
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "       WEAK TRANSITIONS"
+  lines[#lines + 1] = "       Train adaptive movement patterns instead of isolated keys"
+  lines[#lines + 1] = ""
+  highlights[#highlights + 1] = { 1, 0, #lines[2], "SplitTyperTitle" }
+  highlights[#highlights + 1] = { 2, 0, #lines[3], "SplitTyperHeader" }
+
+  local top_class = ctx.errs.get_worst_transition_classes(1, 10, { weighted = true })[1]
+  if top_class then
+    lines[#lines + 1] = string.format(
+      "  Auto currently favors: %s (%.0f%%, sample '%s')",
+      top_class.name,
+      top_class.error_rate * 100,
+      top_class.sample
+    )
+  else
+    lines[#lines + 1] = "  Not enough transition data yet. Auto will fall back to weaker-key practice."
+  end
+  highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], top_class and "SplitTyperMenuDesc" or "SplitTyperPending" }
+  lines[#lines + 1] = ""
+
+  local sep = string.rep("\u{2500}", 72)
+  lines[#lines + 1] = sep
+  highlights[#highlights + 1] = { #lines - 1, 0, #sep, "SplitTyperSep" }
+  lines[#lines + 1] = ""
+
+  for _, option in ipairs(options) do
+    local desc = option.description
+    if option.stat then
+      desc = string.format("%s  [%.0f%%, sample '%s']", desc, option.stat.error_rate * 100, option.stat.sample)
+    elseif option.class_id then
+      desc = desc .. "  [no data yet]"
+    end
+    local line = string.format("  [%s]  %-20s %s", option.key, option.name, desc)
+    lines[#lines + 1] = line
+    highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
+    highlights[#highlights + 1] = { #lines - 1, 27, #line, option.stat and "SplitTyperMenuDesc" or "SplitTyperPending" }
+  end
+
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = sep
+  highlights[#highlights + 1] = { #lines - 1, 0, #sep, "SplitTyperSep" }
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "  [Esc] Back to menu    [q] Quit"
+
+  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+  vim.bo[state.buf].modifiable = false
+  if state.ns then
+    for _, h in ipairs(highlights) do
+      vim.api.nvim_buf_set_extmark(state.buf, state.ns, h[1], h[2], {
+        end_col = h[3],
+        hl_group = h[4],
+      })
+    end
+  end
+
+  ctx.window.clear_keymaps(state)
+  for _, option in ipairs(options) do
+    ctx.window.map(state, option.key, function()
+      ctx.actions.start_transition_exercise(option.class_id)
+    end)
+  end
+  ctx.window.map(state, "<Esc>", ctx.actions.show_menu)
+  ctx.window.map(state, "q", ctx.actions.cleanup)
+  ctx.window.map(state, "<C-c>", ctx.actions.cleanup)
+end
+
 function M.show_menu(ctx)
   local state = ctx.state
   ctx.state_mod.stop_timer(state)
@@ -857,7 +951,7 @@ function M.show_menu(ctx)
     groups[section][#groups[section] + 1] = cat
   end
 
-  local reserved = { q = true, c = true, s = true, t = true, k = true, x = true, d = true }
+  local reserved = { q = true, c = true, s = true, t = true, w = true, k = true, x = true, d = true }
   local key_pool = {}
   for i = 1, 9 do
     key_pool[#key_pool + 1] = tostring(i)
@@ -916,6 +1010,26 @@ function M.show_menu(ctx)
   lines[#lines + 1] = targeted_line
   highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
   highlights[#highlights + 1] = { #lines - 1, 34, #targeted_line, "SplitTyperMenuDesc" }
+
+  local transition_desc = "(not enough transition data yet)"
+  if ctx.errs.has_enough_transition_data() then
+    local worst = ctx.errs.get_worst_bigrams(3, 10)
+    local classes = ctx.errs.get_worst_transition_classes(1, 20, { weighted = true })
+    if #worst > 0 then
+      local parts = {}
+      for _, wb in ipairs(worst) do
+        parts[#parts + 1] = string.format("'%s' %.0f%%", wb.bigram, wb.error_rate * 100)
+      end
+      transition_desc = "Targeting: " .. table.concat(parts, ", ")
+      if #classes > 0 then
+        transition_desc = classes[1].name .. " focus; " .. transition_desc
+      end
+    end
+  end
+  local transition_line = string.format("  [w]  %-28s %s", "Weak Transitions", transition_desc)
+  lines[#lines + 1] = transition_line
+  highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
+  highlights[#highlights + 1] = { #lines - 1, 34, #transition_line, "SplitTyperMenuDesc" }
 
   local dash_line = string.format("  [s]  %-28s %s", "Stats Dashboard", "View your typing profile")
   lines[#lines + 1] = dash_line
@@ -982,6 +1096,7 @@ function M.show_menu(ctx)
       ctx.actions.start_targeted_exercise()
     end
   end)
+  ctx.window.map(state, "w", ctx.actions.show_transition_menu)
   ctx.window.map(state, "k", ctx.actions.show_combo_menu)
   ctx.window.map(state, "x", ctx.actions.show_reaction_menu)
   ctx.window.map(state, "d", ctx.actions.show_timed_menu)
@@ -1138,6 +1253,12 @@ function M.show_results(ctx)
   add(string.format("    Rating:      %s", rating))
   hl(17, #lines[#lines], rating_hl)
 
+  if state.generated_desc and #state.generated_desc > 0 then
+    add("")
+    add("    Focus:       " .. state.generated_desc)
+    hl(17, #lines[#lines], "SplitTyperPending")
+  end
+
   if state.fail_reason then
     add("")
     add("    " .. state.fail_reason)
@@ -1164,6 +1285,29 @@ function M.show_results(ctx)
     end
     for _, h in ipairs(err_highlights) do
       highlights[#highlights + 1] = { base + h[1], h[2], h[3], h[4] }
+    end
+
+    local typed_char_map = state.char_map
+    if state.timed_mode then
+      typed_char_map = {}
+      for i = 1, state.pos do
+        typed_char_map[i] = state.char_map[i]
+      end
+    end
+    local session_bigrams = ctx.errs.get_session_worst_bigrams(state.error_log, typed_char_map, 3, state.pos)
+    if #session_bigrams > 0 then
+      add("")
+      add("    Hardest transitions this session:")
+      hl(0, #lines[#lines], "SplitTyperSep")
+      for _, wb in ipairs(session_bigrams) do
+        local class_note = ""
+        if wb.class_names and #wb.class_names > 0 then
+          class_note = "  " .. table.concat(wb.class_names, ", ")
+        end
+        local line = string.format("      '%s'  %.0f%% error rate  (%d/%d)%s", wb.bigram, wb.error_rate * 100, wb.errors, wb.total, class_note)
+        add(line)
+        hl(6, 10, "SplitTyperBad")
+      end
     end
   end
 
@@ -1212,6 +1356,14 @@ function M.show_results(ctx)
       ctx.actions.start_timed_session(minutes or 1)
     end)
     map_results_action(ctx, "r", ctx.actions.show_timed_menu)
+  elseif state.category_id == "targeted_practice" then
+    ctx.window.map(state, "n", ctx.actions.start_targeted_exercise)
+    ctx.window.map(state, "r", ctx.actions.restart_current_text)
+  elseif state.category_id == "transition_practice" then
+    ctx.window.map(state, "n", function()
+      ctx.actions.start_transition_exercise(state.transition_focus_class)
+    end)
+    ctx.window.map(state, "r", ctx.actions.restart_current_text)
   elseif state.repeat_until_clean then
     ctx.window.map(state, "n", ctx.actions.restart_current_text)
     ctx.window.map(state, "r", function()

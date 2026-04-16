@@ -11,7 +11,7 @@ end, {
   complete = function()
     local cats = require("split-typer.exercises").get_categories()
     local reaction_cats = require("split-typer.exercises").get_reaction_categories()
-    local ids = { "course", "dashboard", "timed", "combos", "reaction" }
+    local ids = { "course", "dashboard", "timed", "combos", "reaction", "transitions", "weak_keys" }
     for _, cat in ipairs(cats) do
       ids[#ids + 1] = cat.id
     end
