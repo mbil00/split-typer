@@ -1,171 +1,158 @@
 local storage = require("split-typer.storage")
 local errs = require("split-typer.errors")
 local words = require("split-typer.words")
+local layouts = require("split-typer.layouts")
 
 local M = {}
 
--- Course levels: progressive key introduction for Ergodox EZ columnar layout.
--- Each level adds new keys and requires minimum WPM + accuracy to pass.
--- req_max_errors: hard cap on errors regardless of accuracy percentage.
--- A long exercise can have high accuracy % but still 10+ errors - this prevents that.
-M.levels = {
-  {
-    id = 1,
-    name = "Home Row",
-    new_chars = "asdfjkl;",
-    all_chars = "asdfjkl;",
+-- Templates describe each level in terms of physical positions on the columnar
+-- grid (row × column). A resolver renders the glyphs from the active layout,
+-- so the same 12-level progression produces QWERTY chars on QWERTY, Dvorak
+-- chars on Dvorak, and so on.
+local level_templates = {
+  { id = 1,  static_name = "Home Row",
+    new_positions = { { row = "home", cols = { 1, 2, 3, 4, 7, 8, 9, 10 } } },
     description = "Find your home position on the columnar grid",
-    req_wpm = 8,
-    req_accuracy = 94,
-    req_efficiency = 88,
-    req_max_errors = 4,
-    req_exercises = 3,
-    words_range = { 10, 16 },
-  },
-  {
-    id = 2,
-    name = "+ E I",
-    new_chars = "ei",
-    all_chars = "asdfjkl;ei",
+    req_wpm = 8,  req_accuracy = 94, req_efficiency = 88,
+    req_max_errors = 4, req_exercises = 3, words_range = { 10, 16 } },
+  { id = 2,
+    new_positions = { { row = "top", cols = { 3, 8 } } },
     description = "Middle fingers reach up to the top row",
-    req_wpm = 10,
-    req_accuracy = 94,
-    req_efficiency = 88,
-    req_max_errors = 4,
-    req_exercises = 3,
-    words_range = { 10, 18 },
-  },
-  {
-    id = 3,
-    name = "+ R U",
-    new_chars = "ru",
-    all_chars = "asdfjkl;eiru",
+    req_wpm = 10, req_accuracy = 94, req_efficiency = 88,
+    req_max_errors = 4, req_exercises = 3, words_range = { 10, 18 } },
+  { id = 3,
+    new_positions = { { row = "top", cols = { 4, 7 } } },
     description = "Index fingers reach up to the top row",
-    req_wpm = 10,
-    req_accuracy = 94,
-    req_efficiency = 89,
-    req_max_errors = 4,
-    req_exercises = 3,
-    words_range = { 12, 18 },
-  },
-  {
-    id = 4,
-    name = "+ G H",
-    new_chars = "gh",
-    all_chars = "asdfjkl;eirugh",
+    req_wpm = 10, req_accuracy = 94, req_efficiency = 89,
+    req_max_errors = 4, req_exercises = 3, words_range = { 12, 18 } },
+  { id = 4,
+    new_positions = { { row = "home", cols = { 5, 6 } } },
     description = "Index fingers reach inward - the split boundary",
-    req_wpm = 10,
-    req_accuracy = 94,
-    req_efficiency = 89,
-    req_max_errors = 4,
-    req_exercises = 4,
-    words_range = { 12, 18 },
-  },
-  {
-    id = 5,
-    name = "+ T Y",
-    new_chars = "ty",
-    all_chars = "asdfjkl;eirughty",
+    req_wpm = 10, req_accuracy = 94, req_efficiency = 89,
+    req_max_errors = 4, req_exercises = 4, words_range = { 12, 18 } },
+  { id = 5,
+    new_positions = { { row = "top", cols = { 5, 6 } } },
     description = "Center column top row - another split challenge",
-    req_wpm = 12,
-    req_accuracy = 95,
-    req_efficiency = 90,
-    req_max_errors = 4,
-    req_exercises = 3,
-    words_range = { 12, 20 },
-  },
-  {
-    id = 6,
-    name = "+ W O",
-    new_chars = "wo",
-    all_chars = "asdfjkl;eirughtywo",
+    req_wpm = 12, req_accuracy = 95, req_efficiency = 90,
+    req_max_errors = 4, req_exercises = 3, words_range = { 12, 20 } },
+  { id = 6,
+    new_positions = { { row = "top", cols = { 2, 9 } } },
     description = "Ring fingers reach up to the top row",
-    req_wpm = 12,
-    req_accuracy = 95,
-    req_efficiency = 90,
-    req_max_errors = 4,
-    req_exercises = 3,
-    words_range = { 12, 20 },
-  },
-  {
-    id = 7,
-    name = "+ Q P",
-    new_chars = "qp",
-    all_chars = "asdfjkl;eirughtywoqp",
+    req_wpm = 12, req_accuracy = 95, req_efficiency = 90,
+    req_max_errors = 4, req_exercises = 3, words_range = { 12, 20 } },
+  { id = 7,
+    new_positions = { { row = "top", cols = { 1, 10 } } },
     description = "Pinkies reach up - full top row complete",
-    req_wpm = 14,
-    req_accuracy = 95,
-    req_efficiency = 91,
-    req_max_errors = 3,
-    req_exercises = 3,
-    words_range = { 12, 20 },
-  },
-  {
-    id = 8,
-    name = "+ C V B",
-    new_chars = "cvb",
-    all_chars = "asdfjkl;eirughtywoqpcvb",
+    req_wpm = 14, req_accuracy = 95, req_efficiency = 91,
+    req_max_errors = 3, req_exercises = 3, words_range = { 12, 20 } },
+  { id = 8,
+    new_positions = { { row = "bottom", cols = { 3, 4, 5 } } },
     description = "Left hand reaches down to the bottom row",
-    req_wpm = 14,
-    req_accuracy = 96,
-    req_efficiency = 91,
-    req_max_errors = 3,
-    req_exercises = 3,
-    words_range = { 14, 22 },
-  },
-  {
-    id = 9,
-    name = "+ N M ,",
-    new_chars = "nm,",
-    all_chars = "asdfjkl;eirughtywoqpcvbnm,",
+    req_wpm = 14, req_accuracy = 96, req_efficiency = 91,
+    req_max_errors = 3, req_exercises = 3, words_range = { 14, 22 } },
+  { id = 9,
+    new_positions = { { row = "bottom", cols = { 6, 7, 8 } } },
     description = "Right hand reaches down to the bottom row",
-    req_wpm = 15,
-    req_accuracy = 96,
-    req_efficiency = 92,
-    req_max_errors = 3,
-    req_exercises = 3,
-    words_range = { 14, 22 },
-  },
-  {
-    id = 10,
-    name = "+ X Z . /",
-    new_chars = "xz./",
-    all_chars = "asdfjkl;eirughtywoqpcvbnm,xz./",
+    req_wpm = 15, req_accuracy = 96, req_efficiency = 92,
+    req_max_errors = 3, req_exercises = 3, words_range = { 14, 22 } },
+  { id = 10,
+    new_positions = { { row = "bottom", cols = { 1, 2, 9, 10 } } },
     description = "Complete the bottom row - all letter keys unlocked",
-    req_wpm = 15,
-    req_accuracy = 96,
-    req_efficiency = 92,
-    req_max_errors = 3,
-    req_exercises = 4,
-    words_range = { 14, 22 },
-  },
-  {
-    id = 11,
-    name = "Numbers",
-    new_chars = "1234567890",
-    all_chars = "asdfjkl;eirughtywoqpcvbnm,xz./1234567890",
+    req_wpm = 15, req_accuracy = 96, req_efficiency = 92,
+    req_max_errors = 3, req_exercises = 4, words_range = { 14, 22 } },
+  { id = 11, static_name = "Numbers",
+    new_positions = { { row = "number", cols = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 } } },
     description = "Top row numbers on the columnar grid",
-    req_wpm = 14,
-    req_accuracy = 95,
-    req_efficiency = 90,
-    req_max_errors = 4,
-    req_exercises = 4,
-    words_range = { 12, 18 },
-  },
-  {
-    id = 12,
-    name = "Full Mastery",
-    new_chars = "!@#$%^&*()-_=+[]{}|;:'\"<>?",
-    all_chars = "asdfjkl;eirughtywoqpcvbnm,xz./1234567890!@#$%^&*()-_=+[]{}|;:'\"<>?",
+    req_wpm = 14, req_accuracy = 95, req_efficiency = 90,
+    req_max_errors = 4, req_exercises = 4, words_range = { 12, 18 } },
+  { id = 12, static_name = "Full Mastery",
+    include_shifted_numbers = true, include_extras = true,
     description = "All keys - prove your mastery of the split keyboard",
-    req_wpm = 16,
-    req_accuracy = 97,
-    req_efficiency = 93,
-    req_max_errors = 3,
-    req_exercises = 5,
-    words_range = { 14, 22 },
-  },
+    req_wpm = 16, req_accuracy = 97, req_efficiency = 93,
+    req_max_errors = 3, req_exercises = 5, words_range = { 14, 22 } },
 }
+
+local function chars_from_positions(positions_list)
+  local out = {}
+  local rows = layouts.active and layouts.active.rows or {}
+  for _, spec in ipairs(positions_list or {}) do
+    local glyphs = rows[spec.row]
+    if glyphs then
+      for _, col in ipairs(spec.cols) do
+        local ch = glyphs[col]
+        if ch then out[#out + 1] = ch end
+      end
+    end
+  end
+  return out
+end
+
+local function chars_from_extras()
+  local out = {}
+  for _, group in ipairs(layouts.active and layouts.active.extras or {}) do
+    for _, ch in ipairs(group.chars) do
+      out[#out + 1] = ch
+    end
+  end
+  return out
+end
+
+local function derive_name(static_name, new_list)
+  if static_name then return static_name end
+  local pieces = {}
+  for _, ch in ipairs(new_list) do
+    pieces[#pieces + 1] = ch:match("%a") and ch:upper() or ch
+  end
+  return "+ " .. table.concat(pieces, " ")
+end
+
+local function materialize_level(template, prior_chars)
+  local new_list = chars_from_positions(template.new_positions)
+  if template.include_shifted_numbers and layouts.active then
+    for _, ch in ipairs(layouts.active.shifted_number_row or {}) do
+      new_list[#new_list + 1] = ch
+    end
+  end
+  if template.include_extras then
+    for _, ch in ipairs(chars_from_extras()) do
+      new_list[#new_list + 1] = ch
+    end
+  end
+
+  local new_chars = table.concat(new_list)
+  return {
+    id = template.id,
+    name = derive_name(template.static_name, new_list),
+    new_chars = new_chars,
+    all_chars = prior_chars .. new_chars,
+    description = template.description,
+    req_wpm = template.req_wpm,
+    req_accuracy = template.req_accuracy,
+    req_efficiency = template.req_efficiency,
+    req_max_errors = template.req_max_errors,
+    req_exercises = template.req_exercises,
+    req_consecutive = template.req_consecutive,
+    words_range = template.words_range,
+  }
+end
+
+local function materialize_all()
+  local out = {}
+  local accum = ""
+  for _, tpl in ipairs(level_templates) do
+    local lvl = materialize_level(tpl, accum)
+    out[#out + 1] = lvl
+    accum = lvl.all_chars
+  end
+  return out
+end
+
+M.levels = materialize_all()
+
+--- Rebuild the level table after a layout change.
+function M.rebuild_for_layout()
+  M.levels = materialize_all()
+end
 
 -- Progress persistence
 local progress_file = storage.layout_data_path("progress")
