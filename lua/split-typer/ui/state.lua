@@ -48,6 +48,8 @@ M.state = {
   reaction_feedback = nil,
   reaction_waiting = false,
   reaction_prompt_started_at = nil,
+  results_unlock_at = nil,
+  results_lock_extmark = nil,
   mapped_keys = {},
 }
 
@@ -90,6 +92,8 @@ local function reset_session_state(state)
   state.reaction_feedback = nil
   state.reaction_waiting = false
   state.reaction_prompt_started_at = nil
+  state.results_unlock_at = nil
+  state.results_lock_extmark = nil
 end
 
 function M.build_char_map(text)

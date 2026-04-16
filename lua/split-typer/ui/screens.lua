@@ -1,4 +1,5 @@
 local M = {}
+local RESULTS_INPUT_COOLDOWN_MS = 2000
 
 local menu_sections = {
   { title = "General", pattern = "^home_row$|^left_hand$|^right_hand$|^center_column$|^common_words$" },
@@ -24,6 +25,85 @@ local function get_section(cat_id)
     end
   end
   return "Other"
+end
+
+local function get_results_lock_remaining_ms(state)
+  if not state.results_unlock_at then
+    return 0
+  end
+
+  return math.max(0, math.ceil((state.results_unlock_at - vim.uv.hrtime()) / 1e6))
+end
+
+local function update_results_lock_hint(ctx)
+  local state = ctx.state
+  if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) or not state.ns then
+    return
+  end
+
+  local remaining_ms = get_results_lock_remaining_ms(state)
+  if remaining_ms <= 0 then
+    state.results_unlock_at = nil
+    if state.results_lock_extmark then
+      pcall(vim.api.nvim_buf_del_extmark, state.buf, state.ns, state.results_lock_extmark)
+      state.results_lock_extmark = nil
+    end
+    return
+  end
+
+  local line_count = vim.api.nvim_buf_line_count(state.buf)
+  local message = string.format(
+    "  Actions unlock in %.1fs to avoid stray keystrokes after the timer ends.",
+    remaining_ms / 1000
+  )
+
+  state.results_lock_extmark = vim.api.nvim_buf_set_extmark(state.buf, state.ns, line_count - 1, 0, {
+    id = state.results_lock_extmark,
+    virt_lines = {
+      { { "", "" } },
+      { { message, "SplitTyperPending" } },
+    },
+  })
+end
+
+local function start_results_input_lock(ctx)
+  local state = ctx.state
+  ctx.state_mod.stop_timer(state)
+  state.results_unlock_at = vim.uv.hrtime() + (RESULTS_INPUT_COOLDOWN_MS * 1e6)
+  update_results_lock_hint(ctx)
+
+  state.timer = vim.uv.new_timer()
+  state.timer:start(
+    100,
+    100,
+    vim.schedule_wrap(function()
+      update_results_lock_hint(ctx)
+      if get_results_lock_remaining_ms(state) <= 0 then
+        ctx.state_mod.stop_timer(state)
+      end
+    end)
+  )
+end
+
+local function add_results_input_lock_notice(state, lines, highlights)
+  local remaining_ms = get_results_lock_remaining_ms(state)
+  if remaining_ms <= 0 then
+    return
+  end
+
+  lines[#lines + 1] = ""
+  local line = "    Actions are briefly locked to avoid stray keystrokes after the timer ends."
+  lines[#lines + 1] = line
+  highlights[#highlights + 1] = { #lines - 1, 0, #line, "SplitTyperPending" }
+end
+
+local function map_results_action(ctx, key, fn)
+  ctx.window.map(ctx.state, key, function()
+    if get_results_lock_remaining_ms(ctx.state) > 0 then
+      return
+    end
+    fn()
+  end)
 end
 
 function M.show_course(ctx)
@@ -993,6 +1073,9 @@ function M.show_results(ctx)
   state.screen = "results"
   ctx.window.ensure_window(state, ctx.actions.cleanup)
   ctx.window.clear_buffer(state)
+  if state.timed_mode then
+    start_results_input_lock(ctx)
+  end
 
   local stats = ctx.state_mod.get_stats(state)
   local rating, rating_hl
@@ -1087,6 +1170,9 @@ function M.show_results(ctx)
   add("")
   add(string.rep("\u{2500}", 44))
   hl(0, #lines[#lines], "SplitTyperSep")
+  if state.timed_mode then
+    add_results_input_lock_notice(state, lines, highlights)
+  end
   add("")
   if state.repeat_until_clean and not state.timed_mode then
     add("    [n] Repeat same prompt")
@@ -1122,10 +1208,10 @@ function M.show_results(ctx)
   ctx.window.clear_keymaps(state)
   if state.timed_mode then
     local minutes = tonumber((state.category_id or ""):match("timed_(%d+)m"))
-    ctx.window.map(state, "n", function()
+    map_results_action(ctx, "n", function()
       ctx.actions.start_timed_session(minutes or 1)
     end)
-    ctx.window.map(state, "r", ctx.actions.show_timed_menu)
+    map_results_action(ctx, "r", ctx.actions.show_timed_menu)
   elseif state.repeat_until_clean then
     ctx.window.map(state, "n", ctx.actions.restart_current_text)
     ctx.window.map(state, "r", function()
@@ -1137,10 +1223,17 @@ function M.show_results(ctx)
     end)
     ctx.window.map(state, "r", ctx.actions.restart_current_text)
   end
-  ctx.window.map(state, "m", ctx.actions.show_menu)
-  ctx.window.map(state, "s", ctx.actions.show_dashboard)
-  ctx.window.map(state, "q", ctx.actions.cleanup)
-  ctx.window.map(state, "<Esc>", ctx.actions.show_menu)
+  if state.timed_mode then
+    map_results_action(ctx, "m", ctx.actions.show_menu)
+    map_results_action(ctx, "s", ctx.actions.show_dashboard)
+    map_results_action(ctx, "q", ctx.actions.cleanup)
+    map_results_action(ctx, "<Esc>", ctx.actions.show_menu)
+  else
+    ctx.window.map(state, "m", ctx.actions.show_menu)
+    ctx.window.map(state, "s", ctx.actions.show_dashboard)
+    ctx.window.map(state, "q", ctx.actions.cleanup)
+    ctx.window.map(state, "<Esc>", ctx.actions.show_menu)
+  end
   ctx.window.map(state, "<C-c>", ctx.actions.cleanup)
 end
 
