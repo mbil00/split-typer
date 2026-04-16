@@ -1,61 +1,56 @@
+local layouts = require("split-typer.layouts")
+
+local function home_row() return layouts.chars_by_row.home end
+local function left_letters() return layouts.chars_by_hand.left end
+local function right_letters() return layouts.chars_by_hand.right end
+
+--- Concat the glyphs of the 5th and 6th columns (the two inward index reaches)
+--- across top/home/bottom rows. These are the "center column" physical keys.
+local function center_column_chars()
+  local rows = layouts.active and layouts.active.rows or {}
+  local out = {}
+  for _, row_name in ipairs({ "top", "home", "bottom" }) do
+    local glyphs = rows[row_name]
+    if glyphs then
+      for _, col in ipairs({ 5, 6 }) do
+        local ch = glyphs[col]
+        if ch then out[#out + 1] = ch end
+      end
+    end
+  end
+  return table.concat(out)
+end
+
 local M = {}
 
 M.categories = {
   {
     id = "home_row",
     name = "Home Row",
-    description = "Build columnar home row muscle memory",
-    gen_config = { chars = "asdfghjkl;", min_words = 10, max_words = 16 },
-    exercises = {
-      "asdf jkl; asdf jkl; asdf jkl; asdf jkl;",
-      "fall lads salad flask dash glad shall glass",
-      "a glad lad had a flask; all salads fall fast",
-      "ask a lass; add half a flask; a fall gala",
-      "alfalfa salad; glass flask; glad lads ask dad",
-      "fall shall dash flash glass lads gall salad ads",
-    },
+    description = "Home-row muscle memory (" .. home_row() .. ")",
+    gen_config = { chars = home_row(), min_words = 10, max_words = 16 },
+    exercises = {},
   },
   {
     id = "left_hand",
     name = "Left Hand",
-    description = "Strengthen left hand on columnar layout",
-    gen_config = { chars = "qwertasdfgzxcvb", min_words = 8, max_words = 14 },
-    exercises = {
-      "we were west better sweet create tree",
-      "abstract extract database target greet",
-      "greatest weather scatter breadth sweat",
-      "excavate exaggerate devastating defeat",
-      "qwert asdfg zxcvb qwert asdfg zxcvb",
-      "secret severe deserve reverse clever brewer",
-    },
+    description = "Strengthen left hand (" .. left_letters() .. ")",
+    gen_config = { chars = left_letters(), min_words = 8, max_words = 14 },
+    exercises = {},
   },
   {
     id = "right_hand",
     name = "Right Hand",
-    description = "Strengthen right hand on columnar layout",
-    gen_config = { chars = "yuiophjklnm,./", min_words = 8, max_words = 14 },
-    exercises = {
-      "you look upon only pink hill jump milk",
-      "monopoly opinion polyphonic million hook",
-      "unhook million opinion junior onion pull",
-      "plum pool loop polo hippo joy pupil noun",
-      "yuiop hjkl; nm,./ yuiop hjkl; nm,./",
-      "minimum opinion million illumination",
-    },
+    description = "Strengthen right hand (" .. right_letters() .. ")",
+    gen_config = { chars = right_letters(), min_words = 8, max_words = 14 },
+    exercises = {},
   },
   {
     id = "center_column",
-    name = "Center Column (TGB/YHN)",
-    description = "The split boundary keys - must use correct hands",
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = "tgbyhn", min_focus_density = 0.25, min_words = 10, max_words = 16 },
-    exercises = {
-      "the young boy then got hungry tonight",
-      "tight night bright thought through that",
-      "buying nothing beyond anything everything",
-      "they hung by the bygone highway north",
-      "both young boys thought about hunting then",
-      "gather rhythm growth beneath lengthy python",
-    },
+    name = "Center Column",
+    description = "Split-boundary index reaches (" .. center_column_chars() .. ")",
+    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = center_column_chars(), min_focus_density = 0.25, min_words = 10, max_words = 16 },
+    exercises = {},
   },
   {
     id = "numbers",
@@ -391,118 +386,63 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
 }]],
     },
   },
-  -- Finger isolation exercises (Ergodox EZ default QWERTY columnar)
+  -- Finger isolation drills: each focuses on a single physical column of the
+  -- columnar split. The glyphs drilled depend on the active layout.
   {
     id = "finger_l_pinky",
     name = "Finger: Left Pinky",
-    description = "Q A Z 1 - vertical column drill",
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = "qaz", min_focus_density = 0.2, min_words = 10, max_words = 16 },
-    exercises = {
-      "aaa qqq zzz aqa aza qaz zaq aqa aza qaz zaq",
-      "aqua plaza quartz jazz pizza hazard bazaar",
-      "a quail gazed at a plaza; a lazy jackal froze",
-      "aq za qa az aq za qa az 1a a1 q1 1q z1 1z",
-      "amazing plaza quake haze amazon gaze raze maze",
-      "zap quiz jazz aqua haze quartz plaza gazette",
-    },
+    description = "Left pinky column (" .. layouts.chars_by_col.l_pinky .. ")",
+    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.l_pinky, min_focus_density = 0.2, min_words = 10, max_words = 16 },
+    exercises = {},
   },
   {
     id = "finger_l_ring",
     name = "Finger: Left Ring",
-    description = "W S X 2 - vertical column drill",
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = "wsx", min_focus_density = 0.2, min_words = 10, max_words = 16 },
-    exercises = {
-      "sss www xxx sws sxs wsx xsw sws sxs wsx xsw",
-      "swam wax sax wasp west wrist six hex flex",
-      "the swiss saw six foxes swim westward",
-      "sw ws xs sx wx xw 2s s2 w2 2w x2 2x",
-      "swiftness witness whisper wisdom wistful sway",
-      "excess wax sox hex axis exist wasp swap swirl",
-    },
+    description = "Left ring column (" .. layouts.chars_by_col.l_ring .. ")",
+    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.l_ring, min_focus_density = 0.2, min_words = 10, max_words = 16 },
+    exercises = {},
   },
   {
     id = "finger_l_middle",
     name = "Finger: Left Middle",
-    description = "E D C 3 - vertical column drill",
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = "edc", min_focus_density = 0.2, min_words = 10, max_words = 16 },
-    exercises = {
-      "ddd eee ccc ded dcd edc cde ded dcd edc cde",
-      "deed cede iced dice edged decked exceed ceded",
-      "he decided to cede the deed; she iced the cake",
-      "ed de cd dc ec ce 3d d3 e3 3e c3 3c",
-      "exceeded recededdeclared decreased decency",
-      "decline educate decided electrode decent cedar",
-    },
+    description = "Left middle column (" .. layouts.chars_by_col.l_middle .. ")",
+    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.l_middle, min_focus_density = 0.2, min_words = 10, max_words = 16 },
+    exercises = {},
   },
   {
     id = "finger_l_index",
     name = "Finger: Left Index",
-    description = "R F V T G B 4 5 - two column reach drill",
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = "rfvtgb", min_focus_density = 0.25, min_words = 10, max_words = 16 },
-    exercises = {
-      "fff rrr vvv ttt ggg bbb frf ftf fgf fbf fvf",
-      "frog raft gift verb brgt graft brave butter",
-      "the brave frog brought five great gifts to bert",
-      "rf fr tf ft gf fg bf fb vf fv 4r r4 5t t5",
-      "tr rt bg gb vt tv rb br tg gt fr rf bt tb",
-      "forgotten turbo gravity butterfly drifting raft",
-    },
+    description = "Left index columns (" .. layouts.chars_by_col.l_index .. ")",
+    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.l_index, min_focus_density = 0.25, min_words = 10, max_words = 16 },
+    exercises = {},
   },
   {
     id = "finger_r_index",
     name = "Finger: Right Index",
-    description = "Y H N U J M 6 7 - two column reach drill",
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = "yuhjnm", min_focus_density = 0.25, min_words = 10, max_words = 16 },
-    exercises = {
-      "jjj uuu mmm yyy hhh nnn juj jyj jhj jnj jmj",
-      "hymn jump numb yummy human jaunty thumby muny",
-      "many humans hummed jaunty hymns under the yum",
-      "uj ju yj jy hj jh nj jn mj jm 6u u6 7y y7",
-      "hy yh mn nm uj ju yh hy nu un mh hm jn nj",
-      "youthful journey humanity jumping unmy rhythm",
-    },
+    description = "Right index columns (" .. layouts.chars_by_col.r_index .. ")",
+    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.r_index, min_focus_density = 0.25, min_words = 10, max_words = 16 },
+    exercises = {},
   },
   {
     id = "finger_r_middle",
     name = "Finger: Right Middle",
-    description = "I K , 8 - vertical column drill",
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = "ik", min_focus_density = 0.2, min_words = 10, max_words = 16 },
-    exercises = {
-      "kkk iii ,,, kik k,k ik, ,ki kik k,k ik, ,ki",
-      "kick kink ink kin ilk bikini skiing hiking",
-      "i kick, i ski, i hike, i think, i pick, i knit",
-      "ik ki ,k k, i, ,i 8k k8 i8 8i ,8 8,",
-      "kindling knitting picking kicking inking skiing",
-      "wiki, risk, brisk, trick, wick, kick, flick,",
-    },
+    description = "Right middle column (" .. layouts.chars_by_col.r_middle .. ")",
+    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.r_middle, min_focus_density = 0.2, min_words = 10, max_words = 16 },
+    exercises = {},
   },
   {
     id = "finger_r_ring",
     name = "Finger: Right Ring",
-    description = "O L . 9 - vertical column drill",
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = "ol", min_focus_density = 0.2, min_words = 10, max_words = 16 },
-    exercises = {
-      "lll ooo ... lol l.l ol. .lo lol l.l ol. .lo",
-      "pool tool loop fool cool drool lollipop wool",
-      "look. loop. loll. fool. cool. tool. spool.",
-      "ol lo .l l. o. .o 9l l9 o9 9o .9 9.",
-      "hollow follow blossom balloon foolproof Apollo",
-      "slowly. boldly. coolly. loosely. wholly. solo.",
-    },
+    description = "Right ring column (" .. layouts.chars_by_col.r_ring .. ")",
+    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.r_ring, min_focus_density = 0.2, min_words = 10, max_words = 16 },
+    exercises = {},
   },
   {
     id = "finger_r_pinky",
     name = "Finger: Right Pinky",
-    description = "P ; / 0 - = [ ] ' - outer reach drill",
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = "p", min_focus_density = 0.15, min_words = 10, max_words = 16 },
-    exercises = {
-      "ppp ;;; /// p;p p/p ;/; /;/ p;p p/p ;/; /;/",
-      "pop pep pip pap; prep prop pulp pump; pal pan",
-      "type; press; tap; pop; pep; /path/to/file;",
-      "p; ;p /p p/ 0p p0 -p p- =p p= [p p] 'p p'",
-      "['property']; {path: '/api/v0'}; a-p; p=0;",
-      "pipeline; parallel; pepper; /opt/bin/app -p 0;",
-    },
+    description = "Right pinky column (" .. layouts.chars_by_col.r_pinky .. ")",
+    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.r_pinky, min_focus_density = 0.15, min_words = 10, max_words = 16 },
+    exercises = {},
   },
   {
     id = "finger_thumbs",
@@ -552,15 +492,10 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
   {
     id = "precision_home",
     name = "Precision: Home Row",
-    description = "No backspace - home row only, lock in the basics",
+    description = "No backspace - home row only (" .. home_row() .. ")",
     no_backspace = true,
-    gen_config = { chars = "asdfghjkl;", min_words = 8, max_words = 14 },
-    exercises = {
-      "add fall salad flask glad dash lass ask",
-      "a lad shall fall; ask a glad lass; add a salad",
-      "dad had a flask; half a salad; all lads ask",
-      "shall fall lass gall flash; add a dash; sad lad",
-    },
+    gen_config = { chars = home_row(), min_words = 8, max_words = 14 },
+    exercises = {},
   },
   {
     id = "precision_words",
@@ -642,17 +577,12 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
   {
     id = "accuracy_home",
     name = "Accuracy: Home Row Gate",
-    description = "Fail on first error - home row discipline only",
+    description = "Fail on first error - home row only (" .. home_row() .. ")",
     no_backspace = true,
     error_limit = 0,
     repeat_until_clean = true,
-    gen_config = { chars = "asdfghjkl;", min_words = 8, max_words = 12 },
-    exercises = {
-      "add dash flask glad shall glass",
-      "sad lads ask half glass",
-      "a glad lad shall add salad",
-      "flash glass lads shall dash",
-    },
+    gen_config = { chars = home_row(), min_words = 8, max_words = 12 },
+    exercises = {},
   },
   {
     id = "accuracy_words",
@@ -732,8 +662,11 @@ function M.get_random_exercise(category_id)
     return nil
   end
 
-  -- When gen_config is available, generate a fresh exercise 70% of the time
-  if cat.gen_config and math.random() < 0.7 then
+  local has_curated = cat.exercises and #cat.exercises > 0
+  -- When gen_config is available, generate a fresh exercise 70% of the time.
+  -- If no curated exercises exist (physical drills on non-QWERTY layouts drop
+  -- the QWERTY-flavored string banks), always fall through to the generator.
+  if cat.gen_config and (not has_curated or math.random() < 0.7) then
     local words = require("split-typer.words")
     return words.generate(cat.gen_config), 0
   end
