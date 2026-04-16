@@ -1,6 +1,6 @@
 local M = {}
 
--- Common English words (~1600), organized by length for variety.
+-- Common English and engineering words (~3200 unique), organized by length for variety.
 -- Stored as concatenated strings for compactness; parsed once on first use.
 local raw = table.concat({
   -- 2-letter
@@ -113,6 +113,7 @@ local raw = table.concat({
   "abort alias assign batch begin break build cache check clean clone close commit debug defer deploy draft fetch guard index insert issue label limit merge model mount parse patch pivot print query raise refit reply reset route scope search serve setup share shift sort split stage start store style trace train treat trigger update usage validate write",
   "compile connect decode define delete deploy derive encode export extend filter format import insert invoke iterate launch render return review search select submit switch toggle unpack update upload validate",
   "allocate assemble automate calculate configure construct deserialize dispatch document enumerate generate integrate maintain migrate navigate normalize optimize paginate populate reconcile refactor register serialize simplify synchronize transform translate validate visualize",
+  "adapter analysis analyst anomaly archive atomic audit backup bitmap buffer builder callback capture checksum cluster collect compare compose compute context current dataset default dynamic element endpoint enhance episode example extract fallback feature gateway handler inspect install instance integer iterate layout lexical library lookup message metrics module monitor outcome package payload pointer profile project promise protocol publish rebuild redirect release request resolve resource restore rollback runtime sandbox scanner schema service session snippet socket staging storage stream syntax system target timeout toolkit trigger upgrade utility validate version virtual watcher wrapper",
 }, " ")
 
 -- Parsed word list (lazy init)
@@ -124,8 +125,12 @@ local function get_all_words()
     return _words
   end
   _words = {}
+  local seen = {}
   for w in raw:gmatch("%S+") do
-    _words[#_words + 1] = w
+    if not seen[w] then
+      _words[#_words + 1] = w
+      seen[w] = true
+    end
   end
   return _words
 end
@@ -190,6 +195,157 @@ local function count_focus_chars(text, focus_set)
     end
   end
   return count
+end
+
+local function word_length_bucket(word)
+  local len = #word
+  if len <= 4 then
+    return "short"
+  elseif len <= 6 then
+    return "medium"
+  end
+  return "long"
+end
+
+local function build_selector(pool)
+  local selector = {
+    all = pool,
+    short = {},
+    medium = {},
+    long = {},
+  }
+
+  for _, word in ipairs(pool) do
+    selector[word_length_bucket(word)][#selector[word_length_bucket(word)] + 1] = word
+  end
+
+  return selector
+end
+
+local function make_length_targets(num_words)
+  local short = math.max(1, math.floor(num_words * 0.32 + 0.5))
+  local medium = math.max(1, math.floor(num_words * 0.43 + 0.5))
+  local long = math.max(1, num_words - short - medium)
+  return {
+    short = short,
+    medium = medium,
+    long = long,
+  }
+end
+
+local function remember_recent(recent, token, limit)
+  recent[#recent + 1] = token
+  if #recent > limit then
+    table.remove(recent, 1)
+  end
+end
+
+local function recently_used(recent, token)
+  for i = 1, #recent do
+    if recent[i] == token then
+      return true
+    end
+  end
+  return false
+end
+
+local function pick_best_candidate(pool, used_counts, recent, desired_bucket, bucket_counts, bucket_targets)
+  if #pool == 0 then
+    return nil
+  end
+
+  local best
+  local best_score = -math.huge
+  local samples = math.min(12, #pool)
+
+  for _ = 1, samples do
+    local candidate = pool[math.random(1, #pool)]
+    local score = 0
+    local used = used_counts[candidate] or 0
+    local bucket = word_length_bucket(candidate)
+
+    if used == 0 then
+      score = score + 14
+    else
+      score = score - (used * 9)
+    end
+
+    if not recently_used(recent, candidate) then
+      score = score + 6
+    else
+      score = score - 12
+    end
+
+    if desired_bucket and bucket == desired_bucket then
+      score = score + 10
+    elseif desired_bucket then
+      score = score - 2
+    end
+
+    if bucket_counts and bucket_targets and bucket_counts[bucket] < bucket_targets[bucket] then
+      score = score + 5
+    end
+
+    if score > best_score then
+      best = candidate
+      best_score = score
+    end
+  end
+
+  return best or pool[math.random(1, #pool)]
+end
+
+local function choose_bucket(selector, bucket_counts, bucket_targets)
+  local order = { "medium", "short", "long" }
+  local best_bucket
+  local best_gap = -math.huge
+
+  for _, bucket in ipairs(order) do
+    if #selector[bucket] > 0 then
+      local gap = (bucket_targets[bucket] or 0) - (bucket_counts[bucket] or 0)
+      if gap > best_gap then
+        best_gap = gap
+        best_bucket = bucket
+      end
+    end
+  end
+
+  return best_bucket
+end
+
+local function pick_word(selector, used_counts, recent, bucket_counts, bucket_targets)
+  local desired_bucket = choose_bucket(selector, bucket_counts, bucket_targets)
+  local primary_pool = desired_bucket and selector[desired_bucket] or selector.all
+  local candidate = pick_best_candidate(primary_pool, used_counts, recent, desired_bucket, bucket_counts, bucket_targets)
+  if not candidate then
+    candidate = pick_best_candidate(selector.all, used_counts, recent, nil, bucket_counts, bucket_targets)
+  end
+  if candidate then
+    used_counts[candidate] = (used_counts[candidate] or 0) + 1
+    bucket_counts[word_length_bucket(candidate)] = (bucket_counts[word_length_bucket(candidate)] or 0) + 1
+    remember_recent(recent, candidate, 4)
+  end
+  return candidate
+end
+
+local function preview_word(selector, used_counts, recent, bucket_counts, bucket_targets)
+  local desired_bucket = choose_bucket(selector, bucket_counts, bucket_targets)
+  local primary_pool = desired_bucket and selector[desired_bucket] or selector.all
+  local candidate = pick_best_candidate(primary_pool, used_counts, recent, desired_bucket, bucket_counts, bucket_targets)
+  if candidate then
+    return candidate
+  end
+  return pick_best_candidate(selector.all, used_counts, recent, nil, bucket_counts, bucket_targets)
+end
+
+local function commit_word(token, used_counts, recent, bucket_counts)
+  if not token then
+    return nil
+  end
+  used_counts[token] = (used_counts[token] or 0) + 1
+  bucket_counts[word_length_bucket(token)] = (bucket_counts[word_length_bucket(token)] or 0) + 1
+  remember_recent(recent, token, 4)
+  return token
 end
 
 local function build_focus_combo(chars, focus, length)
@@ -390,14 +546,21 @@ function M.generate(opts)
 
   -- Build focus word pool (words containing at least one focus char)
   local focus_pool = {}
+  local dense_focus_pool = {}
   if focus and #focus > 0 then
     local focus_set = make_set(focus)
     for _, w in ipairs(pool) do
+      local focus_count = 0
       for i = 1, #w do
         if focus_set[w:sub(i, i)] then
-          focus_pool[#focus_pool + 1] = w
-          break
+          focus_count = focus_count + 1
         end
+      end
+      if focus_count > 0 then
+        focus_pool[#focus_pool + 1] = w
+      end
+      if focus_count >= math.max(2, math.ceil(#w * 0.34)) then
+        dense_focus_pool[#dense_focus_pool + 1] = w
       end
     end
   end
@@ -405,6 +568,13 @@ function M.generate(opts)
   local result = {}
   local focus_set = focus and #focus > 0 and make_set(focus) or nil
   local focus_hits = 0
+  local used_counts = {}
+  local recent = {}
+  local bucket_targets = make_length_targets(num_words)
+  local bucket_counts = { short = 0, medium = 0, long = 0 }
+  local selector = build_selector(pool)
+  local focus_selector = build_selector(focus_pool)
+  local dense_focus_selector = build_selector(dense_focus_pool)
   for i = 1, num_words do
     local token
     local force_focus = focus_set and (
@@ -417,15 +587,17 @@ function M.generate(opts)
       token = M.combo(chars, math.random(2, 5))
     else
       if force_focus and focus_set then
-        if #focus_pool > 0 and math.random() < 0.7 then
-          token = focus_pool[math.random(1, #focus_pool)]
+        if #dense_focus_pool > 0 and math.random() < 0.72 then
+          token = pick_word(dense_focus_selector, used_counts, recent, bucket_counts, bucket_targets)
+        elseif #focus_pool > 0 and math.random() < 0.9 then
+          token = pick_word(focus_selector, used_counts, recent, bucket_counts, bucket_targets)
         else
           token = build_focus_combo(chars, focus, math.random(2, 5))
         end
       elseif #focus_pool > 0 and math.random() < 0.55 then
-        token = focus_pool[math.random(1, #focus_pool)]
+        token = pick_word(focus_selector, used_counts, recent, bucket_counts, bucket_targets)
       else
-        token = pool[math.random(1, #pool)]
+        token = pick_word(selector, used_counts, recent, bucket_counts, bucket_targets)
       end
     end
 
@@ -463,9 +635,13 @@ function M.generate_transition_drill(opts)
   local curated_ratio = opts.curated_ratio or 0
   local allowed_set = opts.allowed_chars and make_set(opts.allowed_chars) or nil
   local all_words = get_all_words()
+  local plain_word_pool = {}
   local transition_pool = {}
 
   for _, w in ipairs(all_words) do
+    if not allowed_set or token_has_allowed_chars(w, allowed_set) then
+      plain_word_pool[#plain_word_pool + 1] = w
+    end
     if allowed_set and not token_has_allowed_chars(w, allowed_set) then
       goto continue_word
     end
@@ -481,6 +657,12 @@ function M.generate_transition_drill(opts)
   local result = {}
   local num_words = math.random(min_words, max_words)
   local transition_hits = 0
+  local used_counts = {}
+  local recent = {}
+  local bucket_targets = make_length_targets(num_words)
+  local bucket_counts = { short = 0, medium = 0, long = 0 }
+  local transition_selector = build_selector(transition_pool)
+  local all_word_selector = build_selector(#plain_word_pool > 0 and plain_word_pool or all_words)
 
   for i = 1, num_words do
     local force_transition = i <= math.min(4, num_words)
@@ -492,7 +674,7 @@ function M.generate_transition_drill(opts)
       if #curated_templates > 0 and math.random() < curated_ratio then
         token = build_curated_token(transitions, curated_templates, style)
       elseif #transition_pool > 0 and math.random() < (1 - combo_ratio) then
-        token = transition_pool[math.random(1, #transition_pool)]
+        token = pick_word(transition_selector, used_counts, recent, bucket_counts, bucket_targets)
       else
         token = make_token_with_transition(transitions[math.random(1, #transitions)], style)
       end
@@ -500,15 +682,17 @@ function M.generate_transition_drill(opts)
       if #curated_templates > 0 and math.random() < math.max(0.12, curated_ratio * 0.7) then
         token = build_curated_token(transitions, curated_templates, style)
       elseif #transition_pool > 0 and math.random() < plain_ratio then
-        token = transition_pool[math.random(1, #transition_pool)]
+        token = pick_word(transition_selector, used_counts, recent, bucket_counts, bucket_targets)
       else
         local attempts = 0
         repeat
-          token = all_words[math.random(1, #all_words)]
+          token = preview_word(all_word_selector, used_counts, recent, bucket_counts, bucket_targets)
           attempts = attempts + 1
         until (not allowed_set or token_has_allowed_chars(token, allowed_set)) or attempts > 40
         if allowed_set and not token_has_allowed_chars(token, allowed_set) then
           token = make_token_with_transition(transitions[math.random(1, #transitions)], style)
+        else
+          token = commit_word(token, used_counts, recent, bucket_counts)
         end
       end
     end
