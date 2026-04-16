@@ -53,7 +53,60 @@ M.state = {
   results_unlock_at = nil,
   results_lock_extmark = nil,
   mapped_keys = {},
+  strictness = "normal",
 }
+
+-- Ordered list of strictness modes. "." cycles through them.
+M.strictness_modes = { "normal", "precision", "accuracy" }
+
+local STRICTNESS_LABEL = {
+  normal = "Normal",
+  precision = "Precision",
+  accuracy = "Accuracy",
+}
+
+local STRICTNESS_HINT = {
+  normal = "backspace allowed, no error cap",
+  precision = "no backspace",
+  accuracy = "no backspace, first-error fail, repeat until clean",
+}
+
+function M.cycle_strictness(state)
+  local current = state.strictness or "normal"
+  for i, mode in ipairs(M.strictness_modes) do
+    if mode == current then
+      state.strictness = M.strictness_modes[i % #M.strictness_modes + 1]
+      return state.strictness
+    end
+  end
+  state.strictness = "normal"
+  return state.strictness
+end
+
+function M.strictness_label(mode)
+  return STRICTNESS_LABEL[mode or "normal"] or "Normal"
+end
+
+function M.strictness_hint(mode)
+  return STRICTNESS_HINT[mode or "normal"] or ""
+end
+
+--- Fold the active strictness mode into an opts table destined for
+--- reset_typing_session. Caller is responsible for deciding whether the
+--- mode applies (only freeplay uses it; course/timed/weak/transition keep
+--- their own rules).
+function M.apply_strictness(opts, mode)
+  opts = opts or {}
+  mode = mode or "normal"
+  if mode == "precision" then
+    opts.no_backspace = true
+  elseif mode == "accuracy" then
+    opts.no_backspace = true
+    opts.error_limit = 0
+    opts.repeat_until_clean = true
+  end
+  return opts
+end
 
 local function reset_session_state(state)
   state.target = nil

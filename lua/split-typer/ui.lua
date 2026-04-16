@@ -294,6 +294,19 @@ function M.show_menu()
   screens.show_menu(ctx)
 end
 
+function M.show_group(group_id)
+  screens.show_group(ctx, group_id)
+end
+
+function M.cycle_strictness()
+  state_mod.cycle_strictness(state)
+  if state.screen == "menu" then
+    M.show_menu()
+  elseif state.screen == "group" then
+    M.show_group(state.group_id)
+  end
+end
+
 function M.start_exercise(category_id, exercise_idx)
   state.screen = "exercise"
   state.category_id = category_id
@@ -311,14 +324,11 @@ function M.start_exercise(category_id, exercise_idx)
     return
   end
 
-  local cat = exercises.get_category(category_id)
-  state_mod.reset_typing_session(state, text, {
+  local opts = state_mod.apply_strictness({
     category_id = category_id,
     exercise_idx = state.exercise_idx,
-    no_backspace = cat and cat.no_backspace or false,
-    error_limit = cat and cat.error_limit or nil,
-    repeat_until_clean = cat and cat.repeat_until_clean or false,
-  })
+  }, state.strictness)
+  state_mod.reset_typing_session(state, text, opts)
 
   window.ensure_window(state, M.cleanup)
   window.clear_buffer(state)
@@ -332,14 +342,11 @@ function M.restart_current_text()
     return
   end
 
-  local cat = exercises.get_category(state.category_id)
-  state_mod.reset_typing_session(state, state.target, {
+  local opts = state_mod.apply_strictness({
     category_id = state.category_id,
     exercise_idx = state.exercise_idx,
-    no_backspace = cat and cat.no_backspace or false,
-    error_limit = cat and cat.error_limit or nil,
-    repeat_until_clean = cat and cat.repeat_until_clean or false,
-  })
+  }, state.strictness)
+  state_mod.reset_typing_session(state, state.target, opts)
 
   window.ensure_window(state, M.cleanup)
   window.clear_buffer(state)
@@ -461,6 +468,12 @@ ctx.actions = {
   show_menu = function()
     M.show_menu()
   end,
+  show_group = function(group_id)
+    M.show_group(group_id)
+  end,
+  cycle_strictness = function()
+    M.cycle_strictness()
+  end,
   show_results = function()
     M.show_results()
   end,
@@ -526,6 +539,12 @@ function M.open(category)
     if category == "weak_keys" then
       window.ensure_window(state, M.cleanup)
       M.start_targeted_exercise()
+      return
+    end
+
+    if exercises.get_group(category) then
+      window.ensure_window(state, M.cleanup)
+      M.show_group(category)
       return
     end
 

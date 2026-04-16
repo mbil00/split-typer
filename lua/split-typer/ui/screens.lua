@@ -1,30 +1,35 @@
 local M = {}
 local RESULTS_INPUT_COOLDOWN_MS = 2000
 
-local menu_sections = {
-  { title = "General", pattern = "^home_row$|^left_hand$|^right_hand$|^center_column$|^common_words$" },
-  { title = "Characters", pattern = "^numbers$|^symbols$|^brackets$|^special_" },
-  { title = "Code", pattern = "^code_" },
-  { title = "Text", pattern = "^prose$|^mixed$" },
-  { title = "Precision (no backspace)", pattern = "^precision_" },
-  { title = "Accuracy (hard fail)", pattern = "^accuracy_" },
-  { title = "Finger Isolation", pattern = "^finger_" },
-}
-
-local function get_section(cat_id)
-  for _, sec in ipairs(menu_sections) do
-    for part in sec.pattern:gmatch("[^|]+") do
-      local pat = part:gsub("^%^", ""):gsub("%$$", "")
-      if pat:sub(-1) == "_" then
-        if cat_id:sub(1, #pat) == pat then
-          return sec.title
-        end
-      elseif cat_id == pat then
-        return sec.title
-      end
+local function build_menu_key_pool(reserved)
+  local pool = {}
+  for i = 1, 9 do
+    pool[#pool + 1] = tostring(i)
+  end
+  pool[#pool + 1] = "0"
+  for ch = string.byte("a"), string.byte("z") do
+    local key = string.char(ch)
+    if not reserved[key] then
+      pool[#pool + 1] = key
     end
   end
-  return "Other"
+  for _, extra in ipairs({ "A", "B", "C", "D", "E" }) do
+    pool[#pool + 1] = extra
+  end
+  return pool
+end
+
+local function render_buffer(state, lines, highlights)
+  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+  vim.bo[state.buf].modifiable = false
+  if state.ns then
+    for _, h in ipairs(highlights) do
+      vim.api.nvim_buf_set_extmark(state.buf, state.ns, h[1], h[2], {
+        end_col = h[3],
+        hl_group = h[4],
+      })
+    end
+  end
 end
 
 local function get_results_lock_remaining_ms(state)
@@ -931,6 +936,31 @@ function M.show_transition_menu(ctx)
   ctx.window.map(state, "<C-c>", ctx.actions.cleanup)
 end
 
+local function push_section_separator(lines, highlights, title)
+  local label = " \u{2500}\u{2500}\u{2500} " .. title .. " "
+  local tail = math.max(3, 50 - vim.fn.strdisplaywidth(label))
+  local sep = label .. string.rep("\u{2500}", tail)
+  lines[#lines + 1] = sep
+  highlights[#highlights + 1] = { #lines - 1, 0, #sep, "SplitTyperSep" }
+  lines[#lines + 1] = ""
+end
+
+local function push_menu_entry(lines, highlights, key, name, description)
+  local line = string.format("  [%s]  %-28s %s", key, name, description or "")
+  lines[#lines + 1] = line
+  highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
+  highlights[#highlights + 1] = { #lines - 1, 34, #line, "SplitTyperMenuDesc" }
+end
+
+local function push_strictness_header(lines, highlights, state, state_mod)
+  local mode = state.strictness or "normal"
+  local label = state_mod.strictness_label(mode)
+  local hint = state_mod.strictness_hint(mode)
+  local line = "       Strictness: " .. label .. "  [.] cycle \u{00B7} " .. hint
+  lines[#lines + 1] = line
+  highlights[#highlights + 1] = { #lines - 1, 0, #line, "SplitTyperHeader" }
+end
+
 function M.show_menu(ctx)
   local state = ctx.state
   ctx.state_mod.stop_timer(state)
@@ -939,36 +969,6 @@ function M.show_menu(ctx)
   ctx.window.ensure_window(state, ctx.actions.cleanup)
   ctx.window.clear_buffer(state)
 
-  local cats = ctx.exercises.get_categories()
-  local groups = {}
-  local order = {}
-  for _, cat in ipairs(cats) do
-    local section = get_section(cat.id)
-    if not groups[section] then
-      groups[section] = {}
-      order[#order + 1] = section
-    end
-    groups[section][#groups[section] + 1] = cat
-  end
-
-  local reserved = { q = true, c = true, s = true, t = true, w = true, k = true, x = true, d = true }
-  local key_pool = {}
-  for i = 1, 9 do
-    key_pool[#key_pool + 1] = tostring(i)
-  end
-  key_pool[#key_pool + 1] = "0"
-  for ch = string.byte("a"), string.byte("z") do
-    local key = string.char(ch)
-    if not reserved[key] then
-      key_pool[#key_pool + 1] = key
-    end
-  end
-  for _, extra in ipairs({ "A", "B", "C", "D", "E" }) do
-    key_pool[#key_pool + 1] = extra
-  end
-
-  local key_idx = 0
-  local cat_keys = {}
   local lines = {}
   local highlights = {}
 
@@ -978,10 +978,13 @@ function M.show_menu(ctx)
   local layouts = require("split-typer.layouts")
   local layout_name = (layouts.active and layouts.active.display_name) or "QWERTY"
   lines[#lines + 1] = "       Layout: " .. layout_name
-  lines[#lines + 1] = ""
   highlights[#highlights + 1] = { 1, 0, #lines[2], "SplitTyperTitle" }
   highlights[#highlights + 1] = { 2, 0, #lines[3], "SplitTyperHeader" }
   highlights[#highlights + 1] = { 3, 0, #lines[4], "SplitTyperHeader" }
+  push_strictness_header(lines, highlights, state, ctx.state_mod)
+  lines[#lines + 1] = ""
+
+  push_section_separator(lines, highlights, "Practice")
 
   local current_level = ctx.course.get_current_level()
   local level = ctx.course.get_level(current_level)
@@ -989,15 +992,7 @@ function M.show_menu(ctx)
   local course_status = progress.passed and current_level == #ctx.course.levels
       and "All levels complete!"
       or string.format("Level %d: %s (%d/%d)", current_level, level.name, progress.completed, level.req_exercises)
-
-  local course_sep = " " .. string.rep("\u{2500}", 3) .. " Course " .. string.rep("\u{2500}", 34)
-  lines[#lines + 1] = course_sep
-  highlights[#highlights + 1] = { #lines - 1, 0, #course_sep, "SplitTyperSep" }
-  lines[#lines + 1] = ""
-  local course_line = string.format("  [c]  %-28s %s", "Touch Typing Course", course_status)
-  lines[#lines + 1] = course_line
-  highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
-  highlights[#highlights + 1] = { #lines - 1, 34, #course_line, "SplitTyperMenuDesc" }
+  push_menu_entry(lines, highlights, "c", "Touch Typing Course", course_status)
 
   local targeted_desc = "(not enough data yet)"
   if ctx.errs.has_enough_data() then
@@ -1010,10 +1005,7 @@ function M.show_menu(ctx)
       targeted_desc = "Targeting: " .. table.concat(parts, ", ")
     end
   end
-  local targeted_line = string.format("  [t]  %-28s %s", "Weak Key Practice", targeted_desc)
-  lines[#lines + 1] = targeted_line
-  highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
-  highlights[#highlights + 1] = { #lines - 1, 34, #targeted_line, "SplitTyperMenuDesc" }
+  push_menu_entry(lines, highlights, "t", "Weak Key Practice", targeted_desc)
 
   local transition_desc = "(not enough transition data yet)"
   if ctx.errs.has_enough_transition_data() then
@@ -1030,67 +1022,31 @@ function M.show_menu(ctx)
       end
     end
   end
-  local transition_line = string.format("  [w]  %-28s %s", "Weak Transitions", transition_desc)
-  lines[#lines + 1] = transition_line
-  highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
-  highlights[#highlights + 1] = { #lines - 1, 34, #transition_line, "SplitTyperMenuDesc" }
-
-  local dash_line = string.format("  [s]  %-28s %s", "Stats Dashboard", "View your typing profile")
-  lines[#lines + 1] = dash_line
-  highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
-  highlights[#highlights + 1] = { #lines - 1, 34, #dash_line, "SplitTyperMenuDesc" }
-
-  local combo_line = string.format("  [k]  %-28s %s", "Combo Trainer", "Practice Ctrl, Alt and modifier combos")
-  lines[#lines + 1] = combo_line
-  highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
-  highlights[#highlights + 1] = { #lines - 1, 34, #combo_line, "SplitTyperMenuDesc" }
-
-  local reaction_line = string.format("  [x]  %-28s %s", "Character Reaction", "Single-key bracket/symbol drill, 50 prompts")
-  lines[#lines + 1] = reaction_line
-  highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
-  highlights[#highlights + 1] = { #lines - 1, 34, #reaction_line, "SplitTyperMenuDesc" }
-
-  local timed_line = string.format("  [d]  %-28s %s", "Timed Practice", "Adaptive 1-5 minute endurance sessions")
-  lines[#lines + 1] = timed_line
-  highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
-  highlights[#highlights + 1] = { #lines - 1, 34, #timed_line, "SplitTyperMenuDesc" }
+  push_menu_entry(lines, highlights, "w", "Weak Transitions", transition_desc)
+  push_menu_entry(lines, highlights, "d", "Timed Practice", "Adaptive 1-5 minute endurance sessions")
+  push_menu_entry(lines, highlights, "k", "Combo Trainer", "Practice Ctrl, Alt and modifier combos")
+  push_menu_entry(lines, highlights, "x", "Character Reaction", "Single-key bracket/symbol drill, 50 prompts")
+  push_menu_entry(lines, highlights, "s", "Stats Dashboard", "View your typing profile")
   lines[#lines + 1] = ""
 
-  for _, section in ipairs(order) do
-    local sep = " " .. string.rep("\u{2500}", 3) .. " " .. section .. " " .. string.rep("\u{2500}", 40 - #section)
-    lines[#lines + 1] = sep
-    highlights[#highlights + 1] = { #lines - 1, 0, #sep, "SplitTyperSep" }
-    lines[#lines + 1] = ""
-    for _, cat in ipairs(groups[section]) do
-      key_idx = key_idx + 1
-      local key = key_pool[key_idx] or "?"
-      cat_keys[cat.id] = key
-      local line = string.format("  [%s]  %-28s %s", key, cat.name, cat.description)
-      lines[#lines + 1] = line
-      highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
-      highlights[#highlights + 1] = { #lines - 1, 34, #line, "SplitTyperMenuDesc" }
-    end
-    lines[#lines + 1] = ""
+  push_section_separator(lines, highlights, "Free Play")
+
+  local groups = ctx.exercises.get_groups()
+  local group_keys = {}
+  for i, group in ipairs(groups) do
+    local key = tostring(i)
+    group_keys[group.id] = key
+    push_menu_entry(lines, highlights, key, group.name, group.description)
   end
+  lines[#lines + 1] = ""
 
   local bottom_sep = string.rep("\u{2500}", 50)
   lines[#lines + 1] = bottom_sep
   highlights[#highlights + 1] = { #lines - 1, 0, #bottom_sep, "SplitTyperSep" }
   lines[#lines + 1] = ""
   lines[#lines + 1] = "  [q] Quit"
-  lines[#lines + 1] = ""
-  lines[#lines + 1] = "  Press a key to select a category"
 
-  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-  vim.bo[state.buf].modifiable = false
-  if state.ns then
-    for _, h in ipairs(highlights) do
-      vim.api.nvim_buf_set_extmark(state.buf, state.ns, h[1], h[2], {
-        end_col = h[3],
-        hl_group = h[4],
-      })
-    end
-  end
+  render_buffer(state, lines, highlights)
 
   ctx.window.clear_keymaps(state)
   ctx.window.map(state, "c", ctx.actions.show_course)
@@ -1104,17 +1060,76 @@ function M.show_menu(ctx)
   ctx.window.map(state, "k", ctx.actions.show_combo_menu)
   ctx.window.map(state, "x", ctx.actions.show_reaction_menu)
   ctx.window.map(state, "d", ctx.actions.show_timed_menu)
-  for _, cat in ipairs(cats) do
-    local key = cat_keys[cat.id]
+  ctx.window.map(state, ".", ctx.actions.cycle_strictness)
+  for _, group in ipairs(groups) do
+    local key = group_keys[group.id]
     if key then
+      ctx.window.map(state, key, function()
+        ctx.actions.show_group(group.id)
+      end)
+    end
+  end
+  ctx.window.map(state, "q", ctx.actions.cleanup)
+  ctx.window.map(state, "<Esc>", ctx.actions.cleanup)
+  ctx.window.map(state, "<C-c>", ctx.actions.cleanup)
+end
+
+function M.show_group(ctx, group_id)
+  local state = ctx.state
+  ctx.state_mod.stop_timer(state)
+  state.screen = "group"
+  state.group_id = group_id
+  state.mode = "freeplay"
+  ctx.window.ensure_window(state, ctx.actions.cleanup)
+  ctx.window.clear_buffer(state)
+
+  local group = ctx.exercises.get_group(group_id)
+  local categories = ctx.exercises.get_categories_in_group(group_id)
+
+  local lines = {}
+  local highlights = {}
+
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "       " .. (group and group.name:upper() or "FREE PLAY")
+  lines[#lines + 1] = "       " .. (group and group.description or "")
+  highlights[#highlights + 1] = { 1, 0, #lines[2], "SplitTyperTitle" }
+  highlights[#highlights + 1] = { 2, 0, #lines[3], "SplitTyperHeader" }
+  push_strictness_header(lines, highlights, state, ctx.state_mod)
+  lines[#lines + 1] = ""
+
+  push_section_separator(lines, highlights, "Exercises")
+
+  local reserved = { q = true }
+  local key_pool = build_menu_key_pool(reserved)
+  local cat_keys = {}
+  for idx, cat in ipairs(categories) do
+    local key = key_pool[idx] or "?"
+    cat_keys[cat.id] = key
+    push_menu_entry(lines, highlights, key, cat.name, cat.description)
+  end
+  lines[#lines + 1] = ""
+
+  local bottom_sep = string.rep("\u{2500}", 50)
+  lines[#lines + 1] = bottom_sep
+  highlights[#highlights + 1] = { #lines - 1, 0, #bottom_sep, "SplitTyperSep" }
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "  [Esc] Back    [q] Quit"
+
+  render_buffer(state, lines, highlights)
+
+  ctx.window.clear_keymaps(state)
+  for _, cat in ipairs(categories) do
+    local key = cat_keys[cat.id]
+    if key and key ~= "?" then
       ctx.window.map(state, key, function()
         state.mode = "freeplay"
         ctx.actions.start_exercise(cat.id)
       end)
     end
   end
+  ctx.window.map(state, ".", ctx.actions.cycle_strictness)
+  ctx.window.map(state, "<Esc>", ctx.actions.show_menu)
   ctx.window.map(state, "q", ctx.actions.cleanup)
-  ctx.window.map(state, "<Esc>", ctx.actions.cleanup)
   ctx.window.map(state, "<C-c>", ctx.actions.cleanup)
 end
 

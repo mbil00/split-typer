@@ -9,13 +9,15 @@ end, {
   nargs = "?",
   desc = "Open Split Typer - adaptive touch-typing practice for keyboards",
   complete = function()
-    local cats = require("split-typer.exercises").get_categories()
-    local reaction_cats = require("split-typer.exercises").get_reaction_categories()
+    local exercises = require("split-typer.exercises")
     local ids = { "course", "dashboard", "timed", "combos", "reaction", "transitions", "weak_keys" }
-    for _, cat in ipairs(cats) do
+    for _, group in ipairs(exercises.get_groups()) do
+      ids[#ids + 1] = group.id
+    end
+    for _, cat in ipairs(exercises.get_categories()) do
       ids[#ids + 1] = cat.id
     end
-    for _, cat in ipairs(reaction_cats) do
+    for _, cat in ipairs(exercises.get_reaction_categories()) do
       ids[#ids + 1] = cat.id
     end
     return ids

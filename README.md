@@ -4,7 +4,7 @@ A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware dr
 
 ## Features
 
-- **43 free-play categories** grouped into general drills, characters, code, prose, finger isolation, precision work, and hard accuracy gates
+- **Free-play drills organized into 4 groups** — General, Characters, Code & Prose, and Fingers — so the main menu stays readable
 - **12-level course** with progressive key introduction, streak-based passing, no-backspace mode, and max-error thresholds
 - **Layout-aware drills** — physical categories (home row, finger isolation, course levels, cross-center detection) adapt to QWERTY or Dvorak based on your config; content categories (code, prose, symbols) stay glyph-stable across layouts
 - **Weak key practice** that uses your saved error profile to bias drills toward your worst characters
@@ -13,10 +13,11 @@ A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware dr
 - **Timed practice** with adaptive 1-5 minute sessions that keep generating text until the timer expires
 - **Combo trainer** with 5 modifier-drill categories for `Ctrl`, `Alt`, numbers, and mixed combinations
 - **Character reaction drill** with 4 prompt pools and per-hit reaction timing
-- **Strict precision and accuracy modes** including no-backspace drills, one-strike gates, and repeat-until-clean exercises
+- **Strictness mode** applied to any free-play drill: cycle `Normal` → `Precision` (no backspace) → `Accuracy` (no backspace, first-error fail, repeat until clean) with a single keystroke
 - **Stats dashboard** with WPM and accuracy trends, best scores, timed-session postmortems, weakest keys, and streak tracking
 - **Persistent data** for course progress, session history, and all-time error analysis; isolated per layout so switching layouts does not pollute stats
 - **Randomized content generation** backed by a built-in word database so practice does not collapse into a few fixed prompts
+- **Custom word lists** — point the plugin at your own vocabulary and get a dedicated Custom Words category plus extra words mixed into general drills
 
 ## Install
 
@@ -55,35 +56,51 @@ vim.opt.rtp:prepend("/path/to/split-typer")
 :SplitTyper combos            " Open the combo trainer
 :SplitTyper timed             " Open timed practice
 :SplitTyper reaction          " Open the reaction-drill menu
+:SplitTyper fingers           " Jump straight to a free-play group submenu
 :SplitTyper home_row          " Jump to a specific free-play category
 :SplitTyper reaction_symbols  " Jump to a specific reaction category
 ```
 
-The command supports completion for built-in entry points and category IDs.
+The command supports completion for built-in entry points, group ids, and category ids.
 
 ## Main Menu
 
 - `[c]` Touch Typing Course
 - `[t]` Weak Key Practice
 - `[w]` Weak Transitions
-- `[s]` Stats Dashboard
+- `[d]` Timed Practice
 - `[k]` Combo Trainer
 - `[x]` Character Reaction
-- `[d]` Timed Practice
-- `[1-9, 0, a-z, A-E]` Free-play categories
+- `[s]` Stats Dashboard
+- `[1]` General drills submenu
+- `[2]` Characters submenu
+- `[3]` Code & Prose submenu
+- `[4]` Fingers submenu
+- `[5]` Custom Words submenu (shown only when configured)
+- `[.]` Cycle strictness (Normal / Precision / Accuracy)
 - `[q]` Quit
 
-## Exercise Groups
+Submenus show a short list of the categories in that group; hit a key to launch, `Esc` to return.
 
-- `General`: home row, left hand, right hand, center column, common words
-- `Characters`: numbers, symbols, shifted punctuation, bracket drills
-- `Code`: Python, JavaScript, Rust/Go/C, shell and config text
-- `Text`: prose paragraphs and mixed challenge prompts
-- `Finger Isolation`: per-finger drills plus thumbs and combination work
-- `Precision`: no-backspace drills for words, symbols, code, and longer bursts
-- `Accuracy`: hard fail gates with explicit error limits and repeat-until-clean behavior
+## Free-play Groups
+
+- **General**: home row, left hand, right hand, center column, common words
+- **Characters**: numbers, isolated brackets, bracket context, isolated symbols, symbol context
+- **Code & Prose**: Python, JavaScript, Rust/Go/C, shell & config, prose paragraphs, ultimate challenge
+- **Fingers**: 8 per-column drills plus thumbs and finger-combination work
+- **Custom Words**: drills drawn exclusively from your configured list (hidden until configured)
 
 ## Modes
+
+### Strictness (Normal / Precision / Accuracy)
+
+Strictness is a persistent mode applied to every free-play drill you launch. Cycle it with `.` from the main menu or any group submenu — the header always shows the active mode.
+
+- `Normal`: backspace allowed, no error cap
+- `Precision`: no backspace, no error cap — think before you type
+- `Accuracy`: no backspace, first-error fail, repeat until clean
+
+Course, Weak Key, Weak Transition, and Timed sessions keep their own rules and ignore the strictness toggle.
 
 ### Course
 
@@ -130,7 +147,7 @@ The command supports completion for built-in entry points and category IDs.
 - Type the displayed text character by character
 - Characters turn green when correct and red when incorrect
 - `Enter` is used for newline characters
-- `Backspace` works in normal free-play and is disabled in precision and course modes
+- `Backspace` works in Normal strictness and is disabled in Precision/Accuracy strictness and course mode
 - `Esc` returns to the relevant previous screen
 - The header shows live net WPM, gross WPM, accuracy, efficiency, error count, and streaks
 
@@ -194,6 +211,33 @@ The shipped layout files in `lua/split-typer/layouts/` (`qwerty.lua`, `dvorak.lu
 
 - Finger assignments target columnar split keyboards (Corne, Kyria, Ergodox, Sofle, etc.). On row-staggered boards the number row in particular will feel slightly off.
 - Shifted-symbol positions assume a standard US base. Layouts that remap those (programmer Dvorak, international variants) need their own `shifted_number_row` and `extras` entries — the schema supports it.
+
+## Custom Words
+
+Point the plugin at your own vocabulary — domain-specific terms, a personal frequency list, words you keep mistyping, etc. Two effects:
+
+1. The words are **merged into the built-in pool**, so they appear inside normal drills whenever their characters fit the drill's allowed set.
+2. A new **Custom Words** free-play category appears in the menu that draws *only* from your list.
+
+Configure via `setup`:
+
+```lua
+-- From a file (one word per line, or whitespace-separated; comments are not stripped)
+require("split-typer").setup({
+  extra_words = "~/.config/split-typer/my-words.txt",
+})
+
+-- Or inline as a Lua table
+require("split-typer").setup({
+  extra_words = { "kubectl", "terraform", "nginx", "postgres", "systemd" },
+})
+```
+
+Notes:
+
+- The Custom Words category is hidden from the menu until you configure a non-empty list, so default installs stay unchanged.
+- Words that include characters outside a drill's allowed set are simply skipped for that drill — for example, `home_row` still only surfaces words typable on home keys, even after merging.
+- There is no implicit lowercasing. If you want your words to participate in home-row or finger drills, keep them lowercase; uppercase or non-ASCII entries will only appear in Custom Words and any drill whose character set includes them.
 
 ## Data Storage
 

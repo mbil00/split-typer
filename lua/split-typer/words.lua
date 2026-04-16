@@ -119,6 +119,7 @@ local raw = table.concat({
 -- Parsed word list (lazy init)
 local _words = nil
 local _filter_cache = {}
+local _custom_words = {}
 
 local function get_all_words()
   if _words then
@@ -132,7 +133,52 @@ local function get_all_words()
       seen[w] = true
     end
   end
+  for _, w in ipairs(_custom_words) do
+    if not seen[w] then
+      _words[#_words + 1] = w
+      seen[w] = true
+    end
+  end
   return _words
+end
+
+--- Replace the user's custom word pool. Accepts an array of strings; each
+--- entry is split on whitespace so callers can pass either clean words or
+--- raw chunks read from a file. Invalidates cached lookups.
+--- @param list string[]|nil
+function M.set_extra_words(list)
+  _custom_words = {}
+  local seen = {}
+  if list then
+    for _, entry in ipairs(list) do
+      if type(entry) == "string" then
+        for w in entry:gmatch("%S+") do
+          if not seen[w] then
+            _custom_words[#_custom_words + 1] = w
+            seen[w] = true
+          end
+        end
+      end
+    end
+  end
+  _words = nil
+  _filter_cache = {}
+end
+
+--- Whether a non-empty custom word pool has been configured.
+--- @return boolean
+function M.has_custom()
+  return #_custom_words > 0
+end
+
+--- Get a copy of the current custom word pool.
+--- @return string[]
+function M.get_custom_words()
+  local out = {}
+  for i, w in ipairs(_custom_words) do
+    out[i] = w
+  end
+  return out
 end
 
 -- Convert a chars string to a fast lookup table
@@ -605,6 +651,39 @@ function M.generate(opts)
     if focus_set then
       focus_hits = focus_hits + count_focus_chars(token, focus_set)
     end
+  end
+
+  return table.concat(result, " ")
+end
+
+--- Generate an exercise drawing only from the user's custom word pool.
+--- Uses the same diversity/bucketing pass as generate() but bypasses
+--- character-set filtering and combo tokens — the user's words are the spec.
+--- @param opts { min_words?: number, max_words?: number }|nil
+--- @return string|nil
+function M.generate_custom(opts)
+  opts = opts or {}
+  if #_custom_words == 0 then
+    return nil
+  end
+
+  local min_words = opts.min_words or 12
+  local max_words = opts.max_words or 20
+  if max_words < min_words then
+    max_words = min_words
+  end
+
+  local num_words = math.random(min_words, max_words)
+  local used_counts = {}
+  local recent = {}
+  local bucket_targets = make_length_targets(num_words)
+  local bucket_counts = { short = 0, medium = 0, long = 0 }
+  local selector = build_selector(_custom_words)
+
+  local result = {}
+  for i = 1, num_words do
+    local token = pick_word(selector, used_counts, recent, bucket_counts, bucket_targets)
+    result[i] = token or _custom_words[math.random(1, #_custom_words)]
   end
 
   return table.concat(result, " ")

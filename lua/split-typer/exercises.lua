@@ -23,10 +23,19 @@ end
 
 local M = {}
 
+M.groups = {
+  { id = "general", name = "General", description = "Home row, hands, center column, common words" },
+  { id = "characters", name = "Characters", description = "Numbers, brackets, symbols" },
+  { id = "code_prose", name = "Code & Prose", description = "Code languages, prose paragraphs, mixed challenge" },
+  { id = "fingers", name = "Fingers", description = "Per-column isolation, thumbs, finger combinations" },
+  { id = "custom", name = "Custom Words", description = "Drills drawn from your configured word list" },
+}
+
 M.categories = {
   {
     id = "home_row",
     name = "Home Row",
+    group = "general",
     description = "Home-row muscle memory (" .. home_row() .. ")",
     gen_config = { chars = home_row(), min_words = 10, max_words = 16 },
     exercises = {},
@@ -34,6 +43,7 @@ M.categories = {
   {
     id = "left_hand",
     name = "Left Hand",
+    group = "general",
     description = "Strengthen left hand (" .. left_letters() .. ")",
     gen_config = { chars = left_letters(), min_words = 8, max_words = 14 },
     exercises = {},
@@ -41,6 +51,7 @@ M.categories = {
   {
     id = "right_hand",
     name = "Right Hand",
+    group = "general",
     description = "Strengthen right hand (" .. right_letters() .. ")",
     gen_config = { chars = right_letters(), min_words = 8, max_words = 14 },
     exercises = {},
@@ -48,6 +59,7 @@ M.categories = {
   {
     id = "center_column",
     name = "Center Column",
+    group = "general",
     description = "Split-boundary index reaches (" .. center_column_chars() .. ")",
     gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = center_column_chars(), min_focus_density = 0.25, min_words = 10, max_words = 16 },
     exercises = {},
@@ -55,6 +67,7 @@ M.categories = {
   {
     id = "numbers",
     name = "Numbers & Digits",
+    group = "characters",
     description = "Top row numbers on columnar layout",
     exercises = {
       "1234567890 0987654321 1234567890",
@@ -66,9 +79,10 @@ M.categories = {
     },
   },
   {
-    id = "brackets_intro",
-    name = "Brackets: Intro",
-    description = "Only bracket shapes and spacing, no letters yet",
+    id = "brackets_isolated",
+    name = "Brackets: Isolated",
+    group = "characters",
+    description = "Bracket shapes, spacing, and nesting with no letters or numbers",
     exercises = {
       "() () () [] [] [] {} {} {} <> <> <>",
       "( ) ( ) [ ] [ ] { } { } < > < >",
@@ -76,13 +90,6 @@ M.categories = {
       "(()) [[]] {{}} <<>> (()) [[]] {{}} <<>>",
       "()() [] [] {}{} <><> ()() [] [] {}{} <><>",
       "( [ { < > } ] ) ( [ { < > } ] )",
-    },
-  },
-  {
-    id = "brackets_nested",
-    name = "Brackets: Nested",
-    description = "Nested bracket transitions without words or numbers",
-    exercises = {
       "([]) {<>} [()] <{}> ([]) {<>} [()] <{}>",
       "({[]}) <{()}> ([{}]) <([])> ({[]}) <{()}>",
       "(([])) {{<>}} [[{}]] <<()>> (([])) {{<>}}",
@@ -92,60 +99,9 @@ M.categories = {
     },
   },
   {
-    id = "symbols_intro",
-    name = "Symbols: Intro",
-    description = "Core punctuation and operators only, no letters or digits",
-    exercises = {
-      "! ? . , ; : ! ? . , ; : ! ? . , ; :",
-      "+ - * / = + - * / = + - * / =",
-      "_ - + = _ - + = _ - + =",
-      "| | || || & & && && ! ! !! !!",
-      ". , . , ; : ; : / / \\ \\",
-      "@ # $ % ^ & * @ # $ % ^ & *",
-    },
-  },
-  {
-    id = "symbols_shifted",
-    name = "Symbols: Shifted Row",
-    description = "Shifted punctuation only, isolated from text",
-    exercises = {
-      "!@#$%^&*() !@#$%^&*() !@#$%^&*()",
-      "! ! @ @ # # $ $ % % ^ ^ & & * * ( ( ) )",
-      "~ _ + | : \" < > ? ~ _ + | : \" < > ?",
-      "~~ __ ++ || :: \"\" << >> ?? ~~ __ ++ ||",
-      "!@# $%^ &*() !@# $%^ &*() !@# $%^ &*()",
-      "<><> ???? |||| ++++ ____ :::: \"\"\"\"",
-    },
-  },
-  {
-    id = "symbols_pairs",
-    name = "Symbols: Pairs & Runs",
-    description = "Common symbol pairs and repeated transitions without words",
-    exercises = {
-      "-> -> => => == == != != <= <= >= >=",
-      "++ ++ -- -- ** ** // // || || && &&",
-      ":: :: .. .. ?? ?? !! !! ## ## @@ @@",
-      "-> => == != <= >= ++ -- ** // || &&",
-      "... ::: ;;; ,,, !!! ??? --- === +++",
-      "|-| |_| /-/ \\-/ <-> <=> |-| |_| /-/",
-    },
-  },
-  {
-    id = "symbols",
-    name = "Symbols & Punctuation",
-    description = "Mixed punctuation in context with text and numbers",
-    exercises = {
-      "!@#$%^&*() !@#$%^&*() !@#$%^&*()",
-      "a + b = c; x - y * z / w % 2;",
-      "user@email.com http://example.com/path?q=1&r=2",
-      "price: $99.99; tax: 8.5%; total: $108.49",
-      "yes/no; true|false; on&&off; 1||0; !done",
-      "#include <stdio.h> /* comment */ // note",
-    },
-  },
-  {
     id = "brackets",
     name = "Brackets & Pairs",
+    group = "characters",
     description = "Bracket practice integrated with text and code-like content",
     exercises = {
       "(a) [b] {c} <d> (e) [f] {g} <h>",
@@ -157,8 +113,61 @@ M.categories = {
     },
   },
   {
+    id = "symbols_isolated",
+    name = "Symbols: Isolated",
+    group = "characters",
+    description = "Punctuation, shifted row, and symbol pairs with no words",
+    exercises = {
+      "! ? . , ; : ! ? . , ; : ! ? . , ; :",
+      "+ - * / = + - * / = + - * / =",
+      "_ - + = _ - + = _ - + =",
+      "| | || || & & && && ! ! !! !!",
+      ". , . , ; : ; : / / \\ \\",
+      "@ # $ % ^ & * @ # $ % ^ & *",
+      "!@#$%^&*() !@#$%^&*() !@#$%^&*()",
+      "! ! @ @ # # $ $ % % ^ ^ & & * * ( ( ) )",
+      "~ _ + | : \" < > ? ~ _ + | : \" < > ?",
+      "~~ __ ++ || :: \"\" << >> ?? ~~ __ ++ ||",
+      "!@# $%^ &*() !@# $%^ &*() !@# $%^ &*()",
+      "<><> ???? |||| ++++ ____ :::: \"\"\"\"",
+      "-> -> => => == == != != <= <= >= >=",
+      "++ ++ -- -- ** ** // // || || && &&",
+      ":: :: .. .. ?? ?? !! !! ## ## @@ @@",
+      "-> => == != <= >= ++ -- ** // || &&",
+      "... ::: ;;; ,,, !!! ??? --- === +++",
+      "|-| |_| /-/ \\-/ <-> <=> |-| |_| /-/",
+      "! ! ! @ @ @ # # # $ $ $ % % % ^ ^ ^ & & & * * * ( ( ( ) ) )",
+      "!@#$%^&*() )(*&^%$#@! !@#$% ^&*() !@#$%^&*()",
+      [[~ ~ _ _ + + { { } } | | : : " " < < > > ? ?]],
+    },
+  },
+  {
+    id = "symbols",
+    name = "Symbols & Punctuation",
+    group = "characters",
+    description = "Mixed punctuation in context with text and numbers",
+    exercises = {
+      "!@#$%^&*() !@#$%^&*() !@#$%^&*()",
+      "a + b = c; x - y * z / w % 2;",
+      "user@email.com http://example.com/path?q=1&r=2",
+      "price: $99.99; tax: 8.5%; total: $108.49",
+      "yes/no; true|false; on&&off; 1||0; !done",
+      "#include <stdio.h> /* comment */ // note",
+      "$99 100% #tag @user &ref *ptr (ok) 2^8 !done",
+      "fn(*args, **kwargs); x = a ^ b & c | !d;",
+      "#[derive(Debug)] !important @media $HOME %d",
+      "(a + b) * (c - d) ^ 2 != $0 & !false % 100",
+      "~/.config ~/bin ~/.local/share ~root",
+      [[{ "name": "test", "value": 42 } | { "ok": true }]],
+      [[a + b > c ? "yes" : "no" | "default"]],
+      "type Config = { host: string; port?: number };",
+      [[cmd | grep "TODO" | sort > out.txt 2>&1]],
+    },
+  },
+  {
     id = "common_words",
     name = "Common Words",
+    group = "general",
     description = "Most frequent English words for speed building",
     gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", min_words = 14, max_words = 24 },
     exercises = {
@@ -174,6 +183,7 @@ M.categories = {
   {
     id = "code_python",
     name = "Code: Python",
+    group = "code_prose",
     description = "Python code with indentation and syntax",
     exercises = {
       [[def fibonacci(n):
@@ -207,6 +217,7 @@ except FileNotFoundError:
   {
     id = "code_js",
     name = "Code: JavaScript",
+    group = "code_prose",
     description = "JavaScript/TypeScript with modern syntax",
     exercises = {
       [[const fetchData = async (url) => {
@@ -243,6 +254,7 @@ useEffect(() => {
   {
     id = "code_rust",
     name = "Code: Rust / Go / C",
+    group = "code_prose",
     description = "Systems code with lots of types and symbols",
     exercises = {
       [[fn main() {
@@ -292,6 +304,7 @@ let y = x.unwrap_or("default");]],
   {
     id = "code_shell",
     name = "Code: Shell & Config",
+    group = "code_prose",
     description = "Shell scripts, YAML, JSON, TOML",
     exercises = {
       [[#!/bin/bash
@@ -328,6 +341,7 @@ tar czf backup_$(date +%Y%m%d).tar.gz --exclude=node_modules .]],
   {
     id = "prose",
     name = "Prose Paragraphs",
+    group = "code_prose",
     description = "Flowing text for sustained typing practice",
     exercises = {
       "The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs. How vexingly quick daft zebras jump.",
@@ -341,6 +355,7 @@ tar czf backup_$(date +%Y%m%d).tar.gz --exclude=node_modules .]],
   {
     id = "mixed",
     name = "Ultimate Challenge",
+    group = "code_prose",
     description = "Everything combined - the final test",
     exercises = {
       [[SELECT u.name, COUNT(o.id) AS order_count
@@ -391,6 +406,7 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
   {
     id = "finger_l_pinky",
     name = "Finger: Left Pinky",
+    group = "fingers",
     description = "Left pinky column (" .. layouts.chars_by_col.l_pinky .. ")",
     gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.l_pinky, min_focus_density = 0.2, min_words = 10, max_words = 16 },
     exercises = {},
@@ -398,6 +414,7 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
   {
     id = "finger_l_ring",
     name = "Finger: Left Ring",
+    group = "fingers",
     description = "Left ring column (" .. layouts.chars_by_col.l_ring .. ")",
     gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.l_ring, min_focus_density = 0.2, min_words = 10, max_words = 16 },
     exercises = {},
@@ -405,6 +422,7 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
   {
     id = "finger_l_middle",
     name = "Finger: Left Middle",
+    group = "fingers",
     description = "Left middle column (" .. layouts.chars_by_col.l_middle .. ")",
     gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.l_middle, min_focus_density = 0.2, min_words = 10, max_words = 16 },
     exercises = {},
@@ -412,6 +430,7 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
   {
     id = "finger_l_index",
     name = "Finger: Left Index",
+    group = "fingers",
     description = "Left index columns (" .. layouts.chars_by_col.l_index .. ")",
     gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.l_index, min_focus_density = 0.25, min_words = 10, max_words = 16 },
     exercises = {},
@@ -419,6 +438,7 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
   {
     id = "finger_r_index",
     name = "Finger: Right Index",
+    group = "fingers",
     description = "Right index columns (" .. layouts.chars_by_col.r_index .. ")",
     gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.r_index, min_focus_density = 0.25, min_words = 10, max_words = 16 },
     exercises = {},
@@ -426,6 +446,7 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
   {
     id = "finger_r_middle",
     name = "Finger: Right Middle",
+    group = "fingers",
     description = "Right middle column (" .. layouts.chars_by_col.r_middle .. ")",
     gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.r_middle, min_focus_density = 0.2, min_words = 10, max_words = 16 },
     exercises = {},
@@ -433,6 +454,7 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
   {
     id = "finger_r_ring",
     name = "Finger: Right Ring",
+    group = "fingers",
     description = "Right ring column (" .. layouts.chars_by_col.r_ring .. ")",
     gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.r_ring, min_focus_density = 0.2, min_words = 10, max_words = 16 },
     exercises = {},
@@ -440,6 +462,7 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
   {
     id = "finger_r_pinky",
     name = "Finger: Right Pinky",
+    group = "fingers",
     description = "Right pinky column (" .. layouts.chars_by_col.r_pinky .. ")",
     gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", focus_chars = layouts.chars_by_col.r_pinky, min_focus_density = 0.15, min_words = 10, max_words = 16 },
     exercises = {},
@@ -447,6 +470,7 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
   {
     id = "finger_thumbs",
     name = "Finger: Thumbs",
+    group = "fingers",
     description = "Space and Enter rhythm on thumb clusters",
     gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", min_words = 20, max_words = 30 },
     exercises = {
@@ -461,6 +485,7 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
   {
     id = "finger_combo",
     name = "Finger: Combinations",
+    group = "fingers",
     description = "Adjacent finger transitions and hand alternation",
     gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", min_words = 12, max_words = 20 },
     exercises = {
@@ -472,179 +497,66 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
       "left right left right both hands alternate now go",
     },
   },
-
-  -- Precision exercises: no backspace allowed
   {
-    id = "precision_short",
-    name = "Precision: Short Bursts",
-    description = "No backspace - tiny exercises, aim for 100%",
-    no_backspace = true,
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", min_words = 4, max_words = 6 },
-    exercises = {
-      "ask fall dad",
-      "life like side",
-      "dark rule true",
-      "just held firm",
-      "kept gold ring",
-      "blue fish swam",
-    },
-  },
-  {
-    id = "precision_home",
-    name = "Precision: Home Row",
-    description = "No backspace - home row only (" .. home_row() .. ")",
-    no_backspace = true,
-    gen_config = { chars = home_row(), min_words = 8, max_words = 14 },
+    id = "custom_words",
+    name = "Custom Words",
+    group = "custom",
+    description = "Drills drawn only from your configured word list",
+    gen_config = { source = "custom", min_words = 12, max_words = 20 },
     exercises = {},
-  },
-  {
-    id = "precision_words",
-    name = "Precision: Words",
-    description = "No backspace - common words, think before you type",
-    no_backspace = true,
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", min_words = 10, max_words = 16 },
-    exercises = {
-      "the world does not reward speed without accuracy",
-      "slow is smooth and smooth is fast remember that",
-      "every single keystroke matters on a split keyboard",
-      "think about the next key before your finger moves",
-      "precision builds the muscle memory that speed needs",
-      "trust the process and the speed will follow later",
-    },
-  },
-  {
-    id = "precision_full",
-    name = "Precision: Extended",
-    description = "No backspace - longer exercises, sustained focus",
-    no_backspace = true,
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", min_words = 16, max_words = 24 },
-    exercises = {
-      "the quick brown fox jumps over the lazy dog and then runs back again across the field to rest",
-      "a split keyboard forces each hand to do its own work with no cheating or crossing over to help",
-      "your fingers need to learn exactly where each key lives on the columnar grid without guessing",
-    },
-  },
-  {
-    id = "precision_code",
-    name = "Precision: Code",
-    description = "No backspace - code snippets, every symbol counts",
-    no_backspace = true,
-    exercises = {
-      [[if (x > 0) {
-  return x * 2;
-}]],
-      [[for i in range(10):
-    print(i)]],
-      [[let mut v: Vec<i32> = vec![1, 2, 3];]],
-      [[const fn = (a, b) => a + b;]],
-      [[def add(x: int, y: int) -> int:
-    return x + y]],
-      [[func main() {
-    fmt.Println("hello")
-}]],
-    },
-  },
-  {
-    id = "precision_symbols",
-    name = "Precision: Symbols",
-    description = "No backspace - brackets and symbols, zero margin",
-    no_backspace = true,
-    exercises = {
-      "() {} [] <> () {} [] <>",
-      "{a: 1, b: 2, c: 3}",
-      "fn(x) -> { [a, b, c] }",
-      "(a + b) * (c - d) / (e % f)",
-      "user@host:~/path/to/file.txt",
-      "arr[0] = obj.key || 'default';",
-    },
-  },
-  {
-    id = "accuracy_burst",
-    name = "Accuracy: One-Strike Bursts",
-    description = "Fail on first error - short words, pure precision",
-    no_backspace = true,
-    error_limit = 0,
-    repeat_until_clean = true,
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", min_words = 5, max_words = 8 },
-    exercises = {
-      "slow calm exact clean",
-      "press each key with care",
-      "think first type once",
-      "small drills reveal mistakes",
-      "accuracy before speed always",
-    },
-  },
-  {
-    id = "accuracy_home",
-    name = "Accuracy: Home Row Gate",
-    description = "Fail on first error - home row only (" .. home_row() .. ")",
-    no_backspace = true,
-    error_limit = 0,
-    repeat_until_clean = true,
-    gen_config = { chars = home_row(), min_words = 8, max_words = 12 },
-    exercises = {},
-  },
-  {
-    id = "accuracy_words",
-    name = "Accuracy: Two-Strike Words",
-    description = "Two strikes only - longer word drills with real pressure",
-    no_backspace = true,
-    error_limit = 1,
-    repeat_until_clean = true,
-    gen_config = { chars = "abcdefghijklmnopqrstuvwxyz", min_words = 14, max_words = 20 },
-    exercises = {
-      "accuracy grows when every keystroke is deliberate and intentional",
-      "slow down enough to stay precise and the speed will return later",
-      "you cannot build reliable muscle memory on top of repeated mistakes",
-      "careful repetitions matter more than rushing through another exercise",
-    },
-  },
-  {
-    id = "accuracy_symbols",
-    name = "Accuracy: Symbols Gate",
-    description = "Fail on first error - symbols and brackets under pressure",
-    no_backspace = true,
-    error_limit = 0,
-    repeat_until_clean = true,
-    exercises = {
-      "() {} [] <> () {} [] <>",
-      "arr[0] = obj.key || 'default';",
-      "fn(x) -> { [a, b, c] }",
-      "(a + b) * (c - d) / (e % f)",
-    },
-  },
-
-  -- Focused special character drilling
-  {
-    id = "special_shifted_nums",
-    name = "Shifted: Number Row",
-    description = "Drill ! @ # $ % ^ & * ( ) one by one",
-    exercises = {
-      "! ! ! @ @ @ # # # $ $ $ % % % ^ ^ ^ & & & * * * ( ( ( ) ) )",
-      "!@#$%^&*() )(*&^%$#@! !@#$% ^&*() !@#$%^&*()",
-      "$99 100% #tag @user &ref *ptr (ok) 2^8 !done",
-      "fn(*args, **kwargs); x = a ^ b & c | !d;",
-      "#[derive(Debug)] !important @media $HOME %d",
-      "(a + b) * (c - d) ^ 2 != $0 & !false % 100",
-    },
-  },
-  {
-    id = "special_shifted_punct",
-    name = "Shifted: Punctuation",
-    description = [[Drill ~ _ + { } | : " < > ? in context]],
-    exercises = {
-      [[~ ~ _ _ + + { { } } | | : : " " < < > > ? ?]],
-      "~/.config ~/bin ~/.local/share ~root",
-      [[{ "name": "test", "value": 42 } | { "ok": true }]],
-      [[a + b > c ? "yes" : "no" | "default"]],
-      "type Config = { host: string; port?: number };",
-      [[cmd | grep "TODO" | sort > out.txt 2>&1]],
-    },
   },
 }
 
+local function custom_available()
+  return require("split-typer.words").has_custom()
+end
+
+local function is_custom_category(cat)
+  return cat.gen_config and cat.gen_config.source == "custom"
+end
+
 function M.get_categories()
-  return M.categories
+  local result = {}
+  local custom_ok = custom_available()
+  for _, cat in ipairs(M.categories) do
+    -- Hide the custom-words category until the user has configured a pool,
+    -- so the menu stays clean out of the box.
+    if not is_custom_category(cat) or custom_ok then
+      result[#result + 1] = cat
+    end
+  end
+  return result
+end
+
+function M.get_groups()
+  local result = {}
+  local custom_ok = custom_available()
+  for _, g in ipairs(M.groups) do
+    if g.id ~= "custom" or custom_ok then
+      result[#result + 1] = g
+    end
+  end
+  return result
+end
+
+function M.get_group(id)
+  for _, g in ipairs(M.groups) do
+    if g.id == id then
+      return g
+    end
+  end
+  return nil
+end
+
+function M.get_categories_in_group(group_id)
+  local result = {}
+  local custom_ok = custom_available()
+  for _, cat in ipairs(M.categories) do
+    if cat.group == group_id and (not is_custom_category(cat) or custom_ok) then
+      result[#result + 1] = cat
+    end
+  end
+  return result
 end
 
 function M.get_category(id)
@@ -662,12 +574,17 @@ function M.get_random_exercise(category_id)
     return nil
   end
 
+  local words = require("split-typer.words")
+
+  if cat.gen_config and cat.gen_config.source == "custom" then
+    return words.generate_custom(cat.gen_config), 0
+  end
+
   local has_curated = cat.exercises and #cat.exercises > 0
   -- When gen_config is available, generate a fresh exercise 70% of the time.
   -- If no curated exercises exist (physical drills on non-QWERTY layouts drop
   -- the QWERTY-flavored string banks), always fall through to the generator.
   if cat.gen_config and (not has_curated or math.random() < 0.7) then
-    local words = require("split-typer.words")
     return words.generate(cat.gen_config), 0
   end
 
