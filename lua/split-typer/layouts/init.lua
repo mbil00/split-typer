@@ -15,12 +15,106 @@ local M = {
 
 local available = {}
 
+local VALID_HANDS = { left = true, right = true, thumbs = true }
+local VALID_FINGERS = {
+  pinky = true, ring = true, middle = true, index = true,
+  number = true, thumb = true,
+}
+local VALID_ROWS = {
+  outer = true, inner = true, center = true, number = true, thumb = true,
+}
+local REQUIRED_ROW_NAMES = { "number", "top", "home", "bottom" }
+
+local function validate_row_array(arr, path)
+  if type(arr) ~= "table" then
+    return false, path .. " must be an array of 10 single-character strings"
+  end
+  if #arr ~= 10 then
+    return false, path .. " has " .. #arr .. " entries, expected 10"
+  end
+  for i = 1, 10 do
+    local v = arr[i]
+    if type(v) ~= "string" then
+      return false, path .. "[" .. i .. "] must be a single-character string, got " .. type(v)
+    end
+    if #v ~= 1 then
+      return false, path .. "[" .. i .. "] = " .. vim.inspect(v) .. ", expected a single-character string"
+    end
+  end
+  return true
+end
+
+local function validate_extras_group(group, path)
+  if type(group) ~= "table" then
+    return false, path .. " must be a table"
+  end
+  if type(group.chars) ~= "table" or #group.chars == 0 then
+    return false, path .. ".chars must be a non-empty array of single-character strings"
+  end
+  for i, ch in ipairs(group.chars) do
+    if type(ch) ~= "string" then
+      return false, path .. ".chars[" .. i .. "] must be a single-character string, got " .. type(ch)
+    end
+    if #ch ~= 1 then
+      return false, path .. ".chars[" .. i .. "] = " .. vim.inspect(ch) .. ", expected a single-character string"
+    end
+  end
+  if not VALID_HANDS[group.hand] then
+    return false, path .. ".hand = " .. vim.inspect(group.hand) .. ", expected one of left/right/thumbs"
+  end
+  if not VALID_FINGERS[group.finger] then
+    return false, path .. ".finger = " .. vim.inspect(group.finger) .. ", expected one of pinky/ring/middle/index/number/thumb"
+  end
+  if not VALID_ROWS[group.row] then
+    return false, path .. ".row = " .. vim.inspect(group.row) .. ", expected one of outer/inner/center/number/thumb"
+  end
+  return true
+end
+
+--- Validate a layout table. Returns (ok, err_message).
+--- err_message always names the field that failed so the author can find it.
+local function validate(layout)
+  if type(layout) ~= "table" then
+    return false, "layout must be a table"
+  end
+  if type(layout.id) ~= "string" or layout.id == "" then
+    return false, "layout.id must be a non-empty string"
+  end
+  if layout.display_name ~= nil and type(layout.display_name) ~= "string" then
+    return false, "layout.display_name must be a string if present"
+  end
+  if type(layout.rows) ~= "table" then
+    return false, "layout.rows must be a table with number/top/home/bottom arrays"
+  end
+  for _, row_name in ipairs(REQUIRED_ROW_NAMES) do
+    local ok, err = validate_row_array(layout.rows[row_name], "layout.rows." .. row_name)
+    if not ok then return false, err end
+  end
+  local ok, err = validate_row_array(layout.shifted_number_row, "layout.shifted_number_row")
+  if not ok then return false, err end
+  if layout.extras ~= nil then
+    if type(layout.extras) ~= "table" then
+      return false, "layout.extras must be an array of groups if present"
+    end
+    for i, group in ipairs(layout.extras) do
+      local group_ok, group_err = validate_extras_group(group, "layout.extras[" .. i .. "]")
+      if not group_ok then return false, group_err end
+    end
+  end
+  return true
+end
+
 local function register(id, layout)
+  local ok, err = validate(layout)
+  if not ok then
+    error("split-typer: invalid layout '" .. tostring(id) .. "': " .. err, 2)
+  end
   available[id] = layout
 end
 
 register("qwerty", require("split-typer.layouts.qwerty"))
 register("dvorak", require("split-typer.layouts.dvorak"))
+register("colemak-dh", require("split-typer.layouts.colemak_dh"))
 
 local function clear_table(t)
   for k in pairs(t) do t[k] = nil end
@@ -135,23 +229,39 @@ local function build(layout)
   M.active = layout
 end
 
---- Rebuild all derived tables for the given layout id.
---- Mutates M's tables in place so existing references stay valid.
-function M.rebuild(layout_id)
-  layout_id = layout_id or "qwerty"
-  local layout = available[layout_id]
-  if not layout then
-    error("split-typer: unknown layout '" .. tostring(layout_id) .. "'")
+--- Activate a layout. Accepts either a registered id (string) or a full
+--- layout table (which will be validated and auto-registered under its `id`).
+function M.rebuild(layout_or_id)
+  local layout_or_id_arg = layout_or_id or "qwerty"
+  local layout
+  if type(layout_or_id_arg) == "table" then
+    local ok, err = validate(layout_or_id_arg)
+    if not ok then
+      error("split-typer: invalid layout: " .. err, 2)
+    end
+    available[layout_or_id_arg.id] = layout_or_id_arg
+    layout = layout_or_id_arg
+  else
+    layout = available[layout_or_id_arg]
+    if not layout then
+      error("split-typer: unknown layout '" .. tostring(layout_or_id_arg) .. "' (registered: " .. table.concat(M.available(), ", ") .. ")", 2)
+    end
   end
   build(layout)
 end
 
---- Register an additional layout at runtime (used by layouts that ship with the plugin).
+--- Register an additional layout by id. Validates before accepting.
 function M.register(id, layout)
   register(id, layout)
 end
 
---- Return the list of registered layout ids.
+--- Validate a layout table without registering it.
+--- Returns (ok, err_message).
+function M.validate(layout)
+  return validate(layout)
+end
+
+--- Return the sorted list of registered layout ids.
 function M.available()
   local ids = {}
   for id in pairs(available) do ids[#ids + 1] = id end

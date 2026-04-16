@@ -146,7 +146,7 @@ The command supports completion for built-in entry points and category IDs.
 
 Split Typer treats exercises as driven by physical key position, not glyph. Ship a layout definition (a grid of glyphs over the columnar 3×10 + number row) and every physical drill — home row, left/right hand, center column, finger isolation, course levels, cross-center transition detection — resolves correctly for that layout.
 
-Built-in layouts: `qwerty` (default) and `dvorak`. Configure via `setup`:
+Built-in layouts: `qwerty` (default), `dvorak`, and `colemak-dh`. Configure via `setup`:
 
 ```lua
 require("split-typer").setup({ layout = "dvorak" })
@@ -154,11 +154,46 @@ require("split-typer").setup({ layout = "dvorak" })
 
 Content categories (prose, code, brackets, symbols, numbers) do **not** adapt — they drill the same glyphs regardless of layout, because the code you type is the same, only the key positions under your fingers change.
 
+### Custom Layouts
+
+Pass a layout table directly to `setup` instead of a built-in id. The table is validated at load time and you'll get a specific error message if any field is wrong (wrong length, bad `hand`/`finger`/`row` enum, non-string glyph, etc.).
+
+```lua
+require("split-typer").setup({
+  layout = {
+    id = "my-colemak",          -- unique id, used for the per-layout data files
+    display_name = "My Colemak", -- shown in the menu header
+    rows = {
+      -- Each row is exactly 10 single-character strings, left to right.
+      -- Column 1 = left pinky, 5 = left index inward, 6 = right index inward, 10 = right pinky.
+      number = { "1","2","3","4","5","6","7","8","9","0" },
+      top    = { "q","w","f","p","b","j","l","u","y",";" },
+      home   = { "a","r","s","t","g","m","n","e","i","o" },
+      bottom = { "z","x","c","d","v","k","h",",",".","/" },
+    },
+    -- 10 single-character strings, one per column (shift of the number row).
+    shifted_number_row = { "!","@","#","$","%","^","&","*","(",")" },
+    -- Extra glyphs that live outside the 3x10 letter grid (right-pinky reaches
+    -- like `[`, `]`, `-`, `=`, their shifted forms, and any shifts of letter-grid
+    -- punctuation that don't fall out of the lowercase-uppercase mapping).
+    -- `hand` ∈ left|right|thumbs, `finger` ∈ pinky|ring|middle|index|number|thumb,
+    -- `row` ∈ outer|inner|center|number|thumb.
+    extras = {
+      { chars = { "[","]","'","-","=","\\" },
+        hand = "right", finger = "pinky", row = "outer" },
+      { chars = { "{","}","\"","_","+","|" },
+        hand = "right", finger = "pinky", row = "outer" },
+    },
+  },
+})
+```
+
+The shipped layout files in `lua/split-typer/layouts/` (`qwerty.lua`, `dvorak.lua`, `colemak_dh.lua`) are the reference implementations to copy from.
+
 ### Limitations
 
 - Finger assignments target columnar split keyboards (Corne, Kyria, Ergodox, Sofle, etc.). On row-staggered boards the number row in particular will feel slightly off.
-- Colemak-DH, Workman, programmer Dvorak, and other variants aren't shipped but each is a single file in `lua/split-typer/layouts/`.
-- Shifted-symbol positions assume a standard US base. Layouts that remap those need their own `shifted_number_row` / `extras` entries.
+- Shifted-symbol positions assume a standard US base. Layouts that remap those (programmer Dvorak, international variants) need their own `shifted_number_row` and `extras` entries — the schema supports it.
 
 ## Data Storage
 
