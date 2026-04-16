@@ -5,7 +5,7 @@ local M = {}
 
 -- Load history from disk
 local function load_history()
-  return storage.read_json(storage.data_path("history.json"), {})
+  return storage.read_json(storage.layout_data_path("history"), {})
 end
 
 local function format_number(n)

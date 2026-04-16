@@ -5,8 +5,11 @@ function M.open(category)
 end
 
 function M.setup(opts)
-  -- Optional: user can override highlight groups, etc.
-  -- For now this is a no-op placeholder for plugin manager compatibility
+  opts = opts or {}
+  if opts.layout then
+    local layouts = require("split-typer.layouts")
+    layouts.rebuild(opts.layout)
+  end
 end
 
 return M

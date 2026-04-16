@@ -168,7 +168,7 @@ M.levels = {
 }
 
 -- Progress persistence
-local progress_file = storage.data_path("progress.json")
+local progress_file = storage.layout_data_path("progress")
 
 local _progress = nil
 

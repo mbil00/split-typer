@@ -20,6 +20,7 @@ local function register(id, layout)
 end
 
 register("qwerty", require("split-typer.layouts.qwerty"))
+register("dvorak", require("split-typer.layouts.dvorak"))
 
 local function clear_table(t)
   for k in pairs(t) do t[k] = nil end

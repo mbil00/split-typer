@@ -4,7 +4,7 @@ local words = require("split-typer.words")
 local M = {}
 
 -- Persistence
-local errors_file = storage.data_path("errors.json")
+local errors_file = storage.layout_data_path("errors")
 
 local _data = nil
 

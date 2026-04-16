@@ -17,6 +17,19 @@ function M.data_path(filename)
   return data_dir .. "/" .. filename
 end
 
+--- Resolve a per-layout data file path. QWERTY (the default) uses the
+--- un-suffixed name so pre-refactor data files stay in use; other layouts
+--- get a `<base>.<layout_id>.<ext>` suffix so their stats stay isolated.
+function M.layout_data_path(base, ext)
+  ext = ext or "json"
+  local layouts = require("split-typer.layouts")
+  local layout_id = (layouts.active and layouts.active.id) or "qwerty"
+  if layout_id == "qwerty" then
+    return data_dir .. "/" .. base .. "." .. ext
+  end
+  return data_dir .. "/" .. base .. "." .. layout_id .. "." .. ext
+end
+
 function M.read_json(path, default)
   local f = io.open(path, "r")
   if not f then

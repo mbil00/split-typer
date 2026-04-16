@@ -11,7 +11,7 @@ local window = require("split-typer.ui.window")
 
 local M = {}
 local random_seeded = false
-local stats_file = storage.data_path("history.json")
+local stats_file = storage.layout_data_path("history")
 local state = state_mod.state
 
 local ctx = {
