@@ -975,9 +975,13 @@ function M.show_menu(ctx)
   lines[#lines + 1] = ""
   lines[#lines + 1] = "       SPLIT TYPER"
   lines[#lines + 1] = "       Adaptive Touch Typing"
+  local layouts = require("split-typer.layouts")
+  local layout_name = (layouts.active and layouts.active.display_name) or "QWERTY"
+  lines[#lines + 1] = "       Layout: " .. layout_name
   lines[#lines + 1] = ""
   highlights[#highlights + 1] = { 1, 0, #lines[2], "SplitTyperTitle" }
   highlights[#highlights + 1] = { 2, 0, #lines[3], "SplitTyperHeader" }
+  highlights[#highlights + 1] = { 3, 0, #lines[4], "SplitTyperHeader" }
 
   local current_level = ctx.course.get_current_level()
   local level = ctx.course.get_level(current_level)
