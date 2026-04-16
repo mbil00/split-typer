@@ -92,47 +92,14 @@ local function append_unique_chars(out, seen, chars, allowed)
   end
 end
 
-local char_meta = {}
+local layouts = require("split-typer.layouts")
 
-local function map_chars(chars, hand, finger, row)
-  for i = 1, #chars do
-    local ch = chars:sub(i, i)
-    char_meta[ch] = { hand = hand, finger = finger, row = row }
-    if ch:match("%a") then
-      char_meta[ch:upper()] = { hand = hand, finger = finger, row = row }
-    end
-  end
-end
-
-map_chars("qaz", "left", "pinky", "outer")
-map_chars("wsx", "left", "ring", "outer")
-map_chars("edc", "left", "middle", "inner")
-map_chars("rfvtgb", "left", "index", "center")
-map_chars("12345", "left", "number", "number")
-map_chars("!@#$%", "left", "number", "number")
-
-map_chars("yhnujm", "right", "index", "center")
-map_chars("ik,", "right", "middle", "inner")
-map_chars("ol.", "right", "ring", "outer")
-map_chars("p;/[]'-=", "right", "pinky", "outer")
-map_chars("67890", "right", "number", "number")
-map_chars("^&*()", "right", "number", "number")
-map_chars("_+{}:?\"<>\\|", "right", "pinky", "outer")
-char_meta[" "] = { hand = "thumbs", finger = "thumb", row = "thumb" }
-char_meta["\n"] = { hand = "thumbs", finger = "thumb", row = "thumb" }
-char_meta["\t"] = { hand = "thumbs", finger = "thumb", row = "thumb" }
-
-local center_left = make_set("tgb")
-local center_right = make_set("yhn")
-local shifted_number_symbols = make_set("!@#$%^&*()")
-local exact_cross_center_pairs = {
-  ty = true,
-  yt = true,
-  gh = true,
-  hg = true,
-  bn = true,
-  nb = true,
-}
+-- char_meta, shifted_number_symbols, and exact_cross_center_pairs are owned by
+-- the layouts module and mutated in place on layout change, so these local
+-- references stay valid across setup({ layout }) calls.
+local char_meta = layouts.char_meta
+local shifted_number_symbols = layouts.shifted_number_symbols
+local exact_cross_center_pairs = layouts.cross_center_pairs
 
 local function get_char_meta(ch)
   return char_meta[ch]
