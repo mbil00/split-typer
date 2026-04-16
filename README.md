@@ -1,11 +1,12 @@
 # split-typer
 
-A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware drills and a standard QWERTY starting point.
+A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware drills. Works on QWERTY and Dvorak out of the box; exercises are driven by physical key position, so adding another layout is a one-file addition.
 
 ## Features
 
 - **43 free-play categories** grouped into general drills, characters, code, prose, finger isolation, precision work, and hard accuracy gates
 - **12-level course** with progressive key introduction, streak-based passing, no-backspace mode, and max-error thresholds
+- **Layout-aware drills** — physical categories (home row, finger isolation, course levels, cross-center detection) adapt to QWERTY or Dvorak based on your config; content categories (code, prose, symbols) stay glyph-stable across layouts
 - **Weak key practice** that uses your saved error profile to bias drills toward your worst characters
 - **Weak transition practice** that targets your hardest letter-to-letter movements with warmups and adaptive word drills
 - **Movement classification** that highlights same-finger, cross-center, symbol, and number-row trouble patterns
@@ -14,7 +15,7 @@ A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware dr
 - **Character reaction drill** with 4 prompt pools and per-hit reaction timing
 - **Strict precision and accuracy modes** including no-backspace drills, one-strike gates, and repeat-until-clean exercises
 - **Stats dashboard** with WPM and accuracy trends, best scores, timed-session postmortems, weakest keys, and streak tracking
-- **Persistent data** for course progress, session history, and all-time error analysis
+- **Persistent data** for course progress, session history, and all-time error analysis; isolated per layout so switching layouts does not pollute stats
 - **Randomized content generation** backed by a built-in word database so practice does not collapse into a few fixed prompts
 
 ## Install
@@ -25,6 +26,8 @@ A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware dr
 {
   "mbil00/split-typer",
   cmd = "SplitTyper",
+  -- Optional: pick a keyboard layout. Defaults to QWERTY.
+  opts = { layout = "dvorak" },
 }
 ```
 
@@ -139,6 +142,24 @@ The command supports completion for built-in entry points and category IDs.
 - The dashboard also highlights difficult transition chains so you can spot repeated movement failures, not just single-key misses
 - Weak transitions are grouped into movement types so you can see whether the problem is hand alternation, same-finger repeats, symbol jumps, or center-column crossings
 
+## Keyboard Layouts
+
+Split Typer treats exercises as driven by physical key position, not glyph. Ship a layout definition (a grid of glyphs over the columnar 3×10 + number row) and every physical drill — home row, left/right hand, center column, finger isolation, course levels, cross-center transition detection — resolves correctly for that layout.
+
+Built-in layouts: `qwerty` (default) and `dvorak`. Configure via `setup`:
+
+```lua
+require("split-typer").setup({ layout = "dvorak" })
+```
+
+Content categories (prose, code, brackets, symbols, numbers) do **not** adapt — they drill the same glyphs regardless of layout, because the code you type is the same, only the key positions under your fingers change.
+
+### Limitations
+
+- Finger assignments target columnar split keyboards (Corne, Kyria, Ergodox, Sofle, etc.). On row-staggered boards the number row in particular will feel slightly off.
+- Colemak-DH, Workman, programmer Dvorak, and other variants aren't shipped but each is a single file in `lua/split-typer/layouts/`.
+- Shifted-symbol positions assume a standard US base. Layouts that remap those need their own `shifted_number_row` / `extras` entries.
+
 ## Data Storage
 
 Split Typer stores its persistent data under `stdpath("data") .. "/split-typer"`:
@@ -146,6 +167,8 @@ Split Typer stores its persistent data under `stdpath("data") .. "/split-typer"`
 - `progress.json`: course progression
 - `history.json`: session history
 - `errors.json`: all-time key, transition, and movement-class error statistics
+
+Non-default layouts use suffixed filenames (e.g. `errors.dvorak.json`, `progress.dvorak.json`) so each layout's stats stay isolated. The un-suffixed QWERTY files are unchanged for existing users.
 
 ## Requirements
 
