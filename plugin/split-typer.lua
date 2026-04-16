@@ -7,7 +7,7 @@ vim.api.nvim_create_user_command("SplitTyper", function(opts)
   require("split-typer").open(opts.args)
 end, {
   nargs = "?",
-  desc = "Open Split Typer - typing practice for split keyboards",
+  desc = "Open Split Typer - adaptive touch-typing practice for keyboards",
   complete = function()
     local cats = require("split-typer.exercises").get_categories()
     local reaction_cats = require("split-typer.exercises").get_reaction_categories()

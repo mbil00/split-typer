@@ -874,13 +874,13 @@ function M.show_transition_menu(ctx)
   local top_class = ctx.errs.get_worst_transition_classes(1, 10, { weighted = true })[1]
   if top_class then
     lines[#lines + 1] = string.format(
-      "  Auto currently favors: %s (%.0f%%, sample '%s')",
+      "  Auto currently favors: %s (score %.3f, sample '%s')",
       top_class.name,
-      top_class.error_rate * 100,
+      top_class.auto_score or 0,
       top_class.sample
     )
   else
-    lines[#lines + 1] = "  Not enough transition data yet. Auto will fall back to weaker-key practice."
+    lines[#lines + 1] = "  Not enough transition data yet. Auto will fall back to weak-key practice."
   end
   highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], top_class and "SplitTyperMenuDesc" or "SplitTyperPending" }
   lines[#lines + 1] = ""
@@ -974,7 +974,7 @@ function M.show_menu(ctx)
 
   lines[#lines + 1] = ""
   lines[#lines + 1] = "       SPLIT TYPER"
-  lines[#lines + 1] = "       Ergodox EZ Practice"
+  lines[#lines + 1] = "       Adaptive Touch Typing"
   lines[#lines + 1] = ""
   highlights[#highlights + 1] = { 1, 0, #lines[2], "SplitTyperTitle" }
   highlights[#highlights + 1] = { 2, 0, #lines[3], "SplitTyperHeader" }

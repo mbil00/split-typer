@@ -1,6 +1,6 @@
 # split-typer
 
-A Neovim plugin for practicing touch typing on split keyboards, built around the ZSA Ergodox EZ and a standard QWERTY layout.
+A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware drills and a standard QWERTY starting point.
 
 ## Features
 
@@ -145,7 +145,7 @@ Split Typer stores its persistent data under `stdpath("data") .. "/split-typer"`
 
 - `progress.json`: course progression
 - `history.json`: session history
-- `errors.json`: all-time key and bigram error statistics
+- `errors.json`: all-time key, transition, and movement-class error statistics
 
 ## Requirements
 
