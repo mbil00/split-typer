@@ -23,6 +23,29 @@ end
 
 local M = {}
 
+local function refresh_layout_categories()
+  local home = home_row()
+  local left = left_letters()
+  local right = right_letters()
+  local center = center_column_chars()
+
+  for _, cat in ipairs(M.categories or {}) do
+    if cat.id == "home_row" then
+      cat.description = "Home-row muscle memory (" .. home .. ")"
+      cat.gen_config.chars = home
+    elseif cat.id == "left_hand" then
+      cat.description = "Strengthen left hand (" .. left .. ")"
+      cat.gen_config.chars = left
+    elseif cat.id == "right_hand" then
+      cat.description = "Strengthen right hand (" .. right .. ")"
+      cat.gen_config.chars = right
+    elseif cat.id == "center_column" then
+      cat.description = "Split-boundary index reaches (" .. center .. ")"
+      cat.gen_config.focus_chars = center
+    end
+  end
+end
+
 M.groups = {
   { id = "general", name = "General", description = "Home row, hands, center column, common words" },
   { id = "characters", name = "Characters", description = "Numbers, brackets, symbols" },
@@ -780,5 +803,11 @@ function M.generate_reaction_exercise(category_id)
 
   return prompts
 end
+
+function M.rebuild_for_layout()
+  refresh_layout_categories()
+end
+
+refresh_layout_categories()
 
 return M

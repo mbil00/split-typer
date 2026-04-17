@@ -15,6 +15,7 @@ M.state = {
   generated_desc = nil,
   transition_focus_class = nil,
   char_map = nil,
+  target_line_count = 0,
   input = {},
   pos = 0,
   correct_count = 0,
@@ -34,6 +35,9 @@ M.state = {
   error_log = {},
   key_events = {},
   header_extmark = nil,
+  char_extmarks = {},
+  newline_extmarks = {},
+  render_initialized = false,
   timed_mode = false,
   timed_duration = 0,
   timed_deadline = nil,
@@ -114,6 +118,7 @@ local function reset_session_state(state)
   state.generated_desc = nil
   state.transition_focus_class = nil
   state.char_map = nil
+  state.target_line_count = 0
   state.input = {}
   state.pos = 0
   state.correct_count = 0
@@ -133,6 +138,9 @@ local function reset_session_state(state)
   state.error_log = {}
   state.key_events = {}
   state.header_extmark = nil
+  state.char_extmarks = {}
+  state.newline_extmarks = {}
+  state.render_initialized = false
   state.timed_mode = false
   state.timed_duration = 0
   state.timed_deadline = nil
@@ -181,6 +189,54 @@ function M.build_char_map(text)
   return chars
 end
 
+--- Append text to an existing char map without rebuilding the existing prefix.
+--- Returns the updated flat char map and total line count.
+--- @param char_map table[]|nil
+--- @param line_count number
+--- @param text string
+--- @param opts? { prepend_newline?: boolean }
+--- @return table[]
+--- @return number
+function M.append_char_map(char_map, line_count, text, opts)
+  char_map = char_map or {}
+  line_count = line_count or 0
+  opts = opts or {}
+
+  if opts.prepend_newline and #char_map > 0 then
+    local last = char_map[#char_map]
+    char_map[#char_map + 1] = {
+      char = "\n",
+      line = math.max(0, line_count - 1),
+      col = last.is_newline and last.col or (last.col + 1),
+      is_newline = true,
+    }
+  end
+
+  local lines = vim.split(text, "\n")
+  local base_line = line_count
+  for line_idx, line in ipairs(lines) do
+    local absolute_line = base_line + line_idx - 1
+    for col_idx = 1, #line do
+      char_map[#char_map + 1] = {
+        char = line:sub(col_idx, col_idx),
+        line = absolute_line,
+        col = col_idx - 1,
+        is_newline = false,
+      }
+    end
+    if line_idx < #lines then
+      char_map[#char_map + 1] = {
+        char = "\n",
+        line = absolute_line,
+        col = #line,
+        is_newline = true,
+      }
+    end
+  end
+
+  return char_map, line_count + #lines
+end
+
 function M.reset_typing_session(state, text, opts)
   opts = opts or {}
   reset_session_state(state)
@@ -188,6 +244,7 @@ function M.reset_typing_session(state, text, opts)
   state.generated_desc = opts.generated_desc
   state.transition_focus_class = opts.transition_focus_class
   state.char_map = M.build_char_map(text)
+  state.target_line_count = #vim.split(text, "\n")
   state.category_id = opts.category_id
   state.exercise_idx = opts.exercise_idx
   state.no_backspace = opts.no_backspace or false

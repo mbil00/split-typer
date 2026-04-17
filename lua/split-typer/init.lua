@@ -45,6 +45,9 @@ function M.setup(opts)
   if opts.layout then
     local layouts = require("split-typer.layouts")
     layouts.rebuild(opts.layout)
+    require("split-typer.course").rebuild_for_layout()
+    require("split-typer.exercises").rebuild_for_layout()
+    require("split-typer.errors").reset_cache()
   end
   if opts.extra_words ~= nil then
     local list = resolve_extra_words(opts.extra_words)

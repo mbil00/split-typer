@@ -247,6 +247,7 @@ M.stage_defs = stage_defs
 --- Rebuild the level table after a layout change.
 function M.rebuild_for_layout()
   M.levels = materialize_all()
+  _progress = nil
 end
 
 -- ============================================================
@@ -456,8 +457,11 @@ local stage_generators = {
 -- Progress persistence
 -- ============================================================
 
-local progress_file = storage.layout_data_path("progress")
 local _progress = nil
+
+local function get_progress_file()
+  return storage.layout_data_path("progress")
+end
 
 local function warn_save_failure()
   vim.schedule(function()
@@ -489,6 +493,7 @@ function M.load_progress()
     return _progress
   end
 
+  local progress_file = get_progress_file()
   local loaded = storage.read_json(progress_file, blank_progress())
   if loaded.schema_version ~= PROGRESS_SCHEMA then
     -- Old flat-per-level format cannot be meaningfully mapped onto stages.
@@ -505,7 +510,7 @@ function M.save_progress()
   if not _progress then
     return
   end
-  if not storage.write_json(progress_file, _progress) then
+  if not storage.write_json(get_progress_file(), _progress) then
     warn_save_failure()
   end
 end

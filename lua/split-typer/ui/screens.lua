@@ -225,16 +225,7 @@ function M.show_course(ctx)
   lines[#lines + 1] = ""
   lines[#lines + 1] = "  Press a level number to start     [Esc] Back to menu    [q] Quit    [R] Reset progress"
 
-  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-  vim.bo[state.buf].modifiable = false
-  if state.ns then
-    for _, h in ipairs(highlights) do
-      vim.api.nvim_buf_set_extmark(state.buf, state.ns, h[1], h[2], {
-        end_col = h[3],
-        hl_group = h[4],
-      })
-    end
-  end
+  render_buffer(state, lines, highlights)
 
   ctx.window.clear_keymaps(state)
   for key, level_id in pairs(level_keys) do

@@ -11,7 +11,6 @@ local window = require("split-typer.ui.window")
 
 local M = {}
 local random_seeded = false
-local stats_file = storage.layout_data_path("history")
 local state = state_mod.state
 
 local ctx = {
@@ -33,6 +32,10 @@ function M.cleanup()
   window.cleanup(state, state_mod.stop_timer)
 end
 
+local function get_stats_file()
+  return storage.layout_data_path("history")
+end
+
 local function set_buffer_text(text)
   local lines = vim.split(text, "\n")
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
@@ -40,7 +43,7 @@ local function set_buffer_text(text)
 end
 
 local function append_history(entry)
-  local _, ok = storage.append_capped(stats_file, entry, 500)
+  local _, ok = storage.append_capped(get_stats_file(), entry, 500)
   if ok == false then
     vim.schedule(function()
       vim.notify("split-typer: failed to save session history", vim.log.levels.WARN)

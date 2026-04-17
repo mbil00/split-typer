@@ -55,15 +55,22 @@ local function append_timed_chunk(ctx)
     return
   end
 
-  local combined = state.target and (#state.target > 0 and (state.target .. "\n" .. chunk) or chunk) or chunk
-  state.target = combined
-  state.char_map = ctx.state_mod.build_char_map(combined)
+  local had_target = state.target and #state.target > 0
+  state.target = had_target and (state.target .. "\n" .. chunk) or chunk
+  state.char_map, state.target_line_count = ctx.state_mod.append_char_map(
+    state.char_map,
+    state.target_line_count,
+    chunk,
+    { prepend_newline = had_target }
+  )
 
   if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
     vim.bo[state.buf].modifiable = true
     vim.api.nvim_buf_set_lines(state.buf, -1, -1, false, vim.split(chunk, "\n"))
     vim.bo[state.buf].modifiable = false
   end
+
+  return true
 end
 
 local function finish_session(ctx)
@@ -160,6 +167,7 @@ end
 
 function M.handle_typed_char(ctx, char)
   local state = ctx.state
+  local did_append_chunk = false
   if state.finished or state.pos >= #state.char_map then
     return
   end
@@ -213,18 +221,18 @@ function M.handle_typed_char(ctx, char)
   end
 
   if state.timed_mode and (#state.char_map - state.pos) < 80 then
-    append_timed_chunk(ctx)
+    did_append_chunk = append_timed_chunk(ctx) or did_append_chunk
   end
 
   if state.pos >= #state.char_map then
     if state.timed_mode then
-      append_timed_chunk(ctx)
+      did_append_chunk = append_timed_chunk(ctx) or did_append_chunk
     else
       finish_session(ctx)
     end
   end
 
-  M.update_display(ctx)
+  M.update_display(ctx, did_append_chunk and { full = true } or nil)
 end
 
 function M.handle_backspace(ctx)
@@ -248,6 +256,93 @@ function M.handle_backspace(ctx)
   state.pos = state.pos - 1
 
   M.update_display(ctx)
+end
+
+local function highlight_for_index(state, i)
+  local entry = state.char_map[i]
+  if not entry then
+    return nil
+  end
+  if i <= state.pos then
+    return state.input[i] == entry.char and "SplitTyperCorrect" or "SplitTyperError"
+  end
+  if i == state.pos + 1 then
+    if entry.is_newline then
+      return "SplitTyperEnter"
+    end
+    return "SplitTyperCursor"
+  end
+  return "SplitTyperPending"
+end
+
+local function render_char_entry(state, i)
+  local entry = state.char_map[i]
+  if not entry or entry.is_newline then
+    return
+  end
+  state.char_extmarks[i] = vim.api.nvim_buf_set_extmark(state.buf, state.ns, entry.line, entry.col, {
+    id = state.char_extmarks[i],
+    end_col = entry.col + 1,
+    hl_group = highlight_for_index(state, i),
+  })
+end
+
+local function render_newline_entry(state, i)
+  local entry = state.char_map[i]
+  if not entry or not entry.is_newline then
+    return
+  end
+
+  local hl = highlight_for_index(state, i)
+  local symbol = "\u{21b5}"
+  if i == state.pos + 1 then
+    symbol = "\u{21b5} Enter"
+  end
+
+  state.newline_extmarks[i] = vim.api.nvim_buf_set_extmark(state.buf, state.ns, entry.line, entry.col, {
+    id = state.newline_extmarks[i],
+    virt_text = { { " " .. symbol, hl } },
+    virt_text_pos = "inline",
+  })
+end
+
+local function render_index(state, i)
+  local entry = state.char_map[i]
+  if not entry then
+    return
+  end
+  if entry.is_newline then
+    render_newline_entry(state, i)
+  else
+    render_char_entry(state, i)
+  end
+end
+
+local function update_cursor_position(state)
+  if state.pos >= #state.char_map then
+    return
+  end
+
+  local entry = state.char_map[state.pos + 1]
+  local cursor_line = entry.line
+  local cursor_col = entry.col
+  if entry.is_newline then
+    local lines = vim.api.nvim_buf_get_lines(state.buf, entry.line, entry.line + 1, false)
+    cursor_col = lines[1] and #lines[1] or 0
+  end
+  pcall(vim.api.nvim_win_set_cursor, state.win, { cursor_line + 1, cursor_col })
+end
+
+local function full_redraw(state)
+  vim.api.nvim_buf_clear_namespace(state.buf, state.ns, 0, -1)
+  state.header_extmark = nil
+  state.char_extmarks = {}
+  state.newline_extmarks = {}
+  for i = 1, #state.char_map do
+    render_index(state, i)
+  end
+
+  state.render_initialized = true
 end
 
 function M.update_stats_header(ctx)
@@ -376,86 +471,30 @@ function M.update_stats_header(ctx)
   })
 end
 
-function M.update_display(ctx)
+function M.update_display(ctx, opts)
   local state = ctx.state
   if not state.buf or not vim.api.nvim_buf_is_valid(state.buf) or not state.ns then
     return
   end
-
-  vim.api.nvim_buf_clear_namespace(state.buf, state.ns, 0, -1)
-  state.header_extmark = nil
-
-  local runs = {}
-  for i = 1, #state.char_map do
-    local entry = state.char_map[i]
-    if entry.is_newline then
-      goto continue
+  opts = opts or {}
+  if opts.full or not state.render_initialized then
+    full_redraw(state)
+  else
+    local changed = {}
+    changed[state.pos] = true
+    changed[state.pos + 1] = true
+    if state.pos > 0 then
+      changed[state.pos - 1] = true
     end
 
-    local hl
-    if i <= state.pos then
-      hl = state.input[i] == entry.char and "SplitTyperCorrect" or "SplitTyperError"
-    elseif i == state.pos + 1 then
-      hl = "SplitTyperCursor"
-    else
-      hl = "SplitTyperPending"
-    end
-
-    local last = runs[#runs]
-    if last and last.line == entry.line and last.hl == hl and last.col_end == entry.col then
-      last.col_end = entry.col + 1
-    else
-      runs[#runs + 1] = {
-        line = entry.line,
-        col_start = entry.col,
-        col_end = entry.col + 1,
-        hl = hl,
-      }
-    end
-
-    ::continue::
-  end
-
-  for _, run in ipairs(runs) do
-    vim.api.nvim_buf_set_extmark(state.buf, state.ns, run.line, run.col_start, {
-      end_col = run.col_end,
-      hl_group = run.hl,
-    })
-  end
-
-  for i = 1, #state.char_map do
-    local entry = state.char_map[i]
-    if entry.is_newline then
-      local hl = "SplitTyperPending"
-      local symbol = "\u{21b5}"
-      if i <= state.pos then
-        if state.input[i] == "\n" then
-          hl = "SplitTyperCorrect"
-        else
-          hl = "SplitTyperError"
-        end
-      elseif i == state.pos + 1 then
-        hl = "SplitTyperEnter"
-        symbol = "\u{21b5} Enter"
+    for i in pairs(changed) do
+      if i >= 1 and i <= #state.char_map then
+        render_index(state, i)
       end
-      vim.api.nvim_buf_set_extmark(state.buf, state.ns, entry.line, entry.col, {
-        virt_text = { { " " .. symbol, hl } },
-        virt_text_pos = "inline",
-      })
     end
   end
 
-  if state.pos < #state.char_map then
-    local entry = state.char_map[state.pos + 1]
-    local cursor_line = entry.line
-    local cursor_col = entry.col
-    if entry.is_newline then
-      local lines = vim.api.nvim_buf_get_lines(state.buf, entry.line, entry.line + 1, false)
-      cursor_col = lines[1] and #lines[1] or 0
-    end
-    pcall(vim.api.nvim_win_set_cursor, state.win, { cursor_line + 1, cursor_col })
-  end
-
+  update_cursor_position(state)
   M.update_stats_header(ctx)
 end
 

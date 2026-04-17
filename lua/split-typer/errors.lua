@@ -4,9 +4,11 @@ local words = require("split-typer.words")
 local M = {}
 
 -- Persistence
-local errors_file = storage.layout_data_path("errors")
-
 local _data = nil
+
+local function get_errors_file()
+  return storage.layout_data_path("errors")
+end
 
 local function warn_save_failure(kind)
   vim.schedule(function()
@@ -40,7 +42,7 @@ local function load_data()
     return _data
   end
 
-  _data = storage.read_json(errors_file, {
+  _data = storage.read_json(get_errors_file(), {
     chars = {},
     bigrams = {},
     trigrams = {},
@@ -69,9 +71,13 @@ local function save_data()
   if not _data then
     return
   end
-  if not storage.write_json(errors_file, _data) then
+  if not storage.write_json(get_errors_file(), _data) then
     warn_save_failure("error statistics")
   end
+end
+
+function M.reset_cache()
+  _data = nil
 end
 
 local function make_set(chars)
