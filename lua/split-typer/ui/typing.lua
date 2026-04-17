@@ -261,7 +261,12 @@ function M.update_stats_header(ctx)
   local cat_name = cat and cat.name or "?"
   if state.mode == "course" and state.course_level then
     local level = ctx.course.get_level(state.course_level)
-    cat_name = level and ("Course: " .. level.name) or cat_name
+    local stage = state.course_stage and ctx.course.get_stage(state.course_level, state.course_stage)
+    if level and stage then
+      cat_name = string.format("Course L%d: %s / %s", level.id, level.name, stage.name)
+    elseif level then
+      cat_name = "Course: " .. level.name
+    end
   elseif state.timed_mode then
     cat_name = "Timed Practice"
   elseif state.category_id == "targeted_practice" then

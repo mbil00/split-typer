@@ -10,6 +10,7 @@ M.state = {
   exercise_idx = nil,
   mode = "freeplay",
   course_level = nil,
+  course_stage = nil,
   target = nil,
   generated_desc = nil,
   transition_focus_class = nil,

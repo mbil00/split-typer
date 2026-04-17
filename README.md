@@ -5,7 +5,7 @@ A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware dr
 ## Features
 
 - **Free-play drills organized into 4 groups** — General, Characters, Code & Prose, and Fingers — so the main menu stays readable
-- **12-level course** with progressive key introduction, streak-based passing, no-backspace mode, and max-error thresholds
+- **12-level course** with progressive key introduction and five stage types per level (single-key, bigrams, focused words, integration, mastery); each stage has its own gate and must be cleared twice
 - **Layout-aware drills** — physical categories (home row, finger isolation, course levels, cross-center detection) adapt to QWERTY or Dvorak based on your config; content categories (code, prose, symbols) stay glyph-stable across layouts
 - **Weak key practice** that uses your saved error profile to bias drills toward your worst characters
 - **Weak transition practice** that targets your hardest letter-to-letter movements with warmups and adaptive word drills
@@ -105,8 +105,16 @@ Course, Weak Key, Weak Transition, and Timed sessions keep their own rules and i
 ### Course
 
 - 12 structured levels that introduce new keys gradually
-- Tracks best WPM, best accuracy, completion count, and pass streaks
-- Uses no-backspace typing and stricter thresholds than free-play
+- Each level runs five stage types, each with its own pass gate:
+  - **Single Key** — isolated presses of the newly unlocked keys
+  - **Bigrams** — pair drills mixing new keys against each other and prior keys
+  - **Focused Words** — real words that lean heavily on the new keys
+  - **Integration** — all unlocked keys, biased toward your weak spots
+  - **Mastery** — a longer run with a tighter gate
+- Each stage must be cleared twice to pass; once cleared, it's still replayable but no longer required
+- Pressing a level key auto-picks a not-yet-passed stage
+- WPM and accuracy floors rise with each level; the mastery stage always raises them further
+- Uses no-backspace typing throughout
 
 ### Weak Key Practice
 

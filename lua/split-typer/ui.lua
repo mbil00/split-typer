@@ -207,18 +207,21 @@ function M.show_course()
   screens.show_course(ctx)
 end
 
-function M.start_course_exercise(level_id)
+function M.start_course_exercise(level_id, stage_id)
   if not course.is_unlocked(level_id) then
     return
   end
 
+  stage_id = stage_id or course.pick_next_stage(level_id)
+
   state.mode = "course"
   state.course_level = level_id
+  state.course_stage = stage_id
   state.screen = "exercise"
 
-  local text = course.generate_exercise(level_id)
+  local text = course.generate_exercise(level_id, stage_id)
   state_mod.reset_typing_session(state, text, {
-    category_id = "course_" .. level_id,
+    category_id = "course_" .. level_id .. "_" .. stage_id,
     exercise_idx = nil,
     no_backspace = true,
   })
@@ -483,8 +486,8 @@ ctx.actions = {
   start_reaction_exercise = function(category_id)
     M.start_reaction_exercise(category_id)
   end,
-  start_course_exercise = function(level_id)
-    M.start_course_exercise(level_id)
+  start_course_exercise = function(level_id, stage_id)
+    M.start_course_exercise(level_id, stage_id)
   end,
   start_exercise = function(category_id, exercise_idx)
     M.start_exercise(category_id, exercise_idx)
