@@ -129,8 +129,41 @@ function M.handle_input(ctx, keymap)
     state.start_time = vim.uv.hrtime()
   end
 
-  state.keystroke_count = state.keystroke_count + 1
   local expected = state.combos[state.combo_idx]
+  if keymap == "<Space>" and expected.key ~= "<Space>" then
+    state.keystroke_count = state.keystroke_count + 1
+    state.combo_results[state.combo_idx] = {
+      correct = false,
+      skipped = true,
+      actual = keymap,
+    }
+    state.combo_feedback = {
+      skipped = true,
+      actual_display = "Skipped",
+      expected_display = expected.display,
+    }
+    M.update_display(ctx)
+
+    state.combo_waiting = true
+    vim.defer_fn(function()
+      state.combo_waiting = false
+      if state.combo_idx >= #state.combos then
+        state.finished = true
+        state.end_time = vim.uv.hrtime()
+        vim.defer_fn(function()
+          ctx.save_combo_stats()
+          ctx.actions.show_combo_results()
+        end, 200)
+      else
+        state.combo_idx = state.combo_idx + 1
+        state.combo_feedback = nil
+        M.update_display(ctx)
+      end
+    end, 250)
+    return
+  end
+
+  state.keystroke_count = state.keystroke_count + 1
   local is_correct = keymap == expected.key
 
   if is_correct then
@@ -215,7 +248,12 @@ function M.update_display(ctx)
   local display = combo.display
   local combo_line_idx = #lines
   if state.combo_feedback then
-    if state.combo_feedback.correct then
+    if state.combo_feedback.skipped then
+      local text = display .. "  skipped"
+      local pad = math.max(0, math.floor((win_width - #text) / 2))
+      lines[#lines + 1] = string.rep(" ", pad) .. text
+      highlights[#highlights + 1] = { combo_line_idx, pad, pad + #text, "SplitTyperPending" }
+    elseif state.combo_feedback.correct then
       local text = display .. "  \u{2713}"
       local pad = math.max(0, math.floor((win_width - #text) / 2))
       lines[#lines + 1] = string.rep(" ", pad) .. text

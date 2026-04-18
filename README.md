@@ -40,6 +40,16 @@ A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware dr
 { dir = "/path/to/split-typer", name = "split-typer" }
 ```
 
+### Tests
+
+Run the headless Neovim regression suite with:
+
+```bash
+./scripts/test.sh
+```
+
+The current suite is intentionally lightweight and focuses on core logic and regression coverage for persistence, course progression, error aggregation, retry semantics, combo skipping, dashboard metric separation, and custom-word validation.
+
 ### Manual
 
 Add to your `init.lua`:
@@ -264,7 +274,8 @@ Notes:
 
 - The Custom Words category is hidden from the menu until you configure a non-empty list, so default installs stay unchanged.
 - Words that include characters outside a drill's allowed set are simply skipped for that drill — for example, `home_row` still only surfaces words typable on home keys, even after merging.
-- There is no implicit lowercasing. If you want your words to participate in home-row or finger drills, keep them lowercase; uppercase or non-ASCII entries will only appear in Custom Words and any drill whose character set includes them.
+- There is no implicit lowercasing. If you want your words to participate in home-row or finger drills, keep them lowercase.
+- Custom words are currently limited to printable ASCII tokens. Non-ASCII entries are skipped with a warning because the in-buffer typing keymaps only support ASCII input today.
 
 ## Data Storage
 

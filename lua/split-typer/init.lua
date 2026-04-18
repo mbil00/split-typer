@@ -52,7 +52,15 @@ function M.setup(opts)
   if opts.extra_words ~= nil then
     local list = resolve_extra_words(opts.extra_words)
     if list then
-      require("split-typer.words").set_extra_words(list)
+      local report = require("split-typer.words").set_extra_words(list)
+      if report.skipped_unsupported > 0 then
+        vim.notify(
+          "split-typer: skipped "
+            .. report.skipped_unsupported
+            .. " custom word(s) with unsupported non-ASCII characters; custom words are currently ASCII-only",
+          vim.log.levels.WARN
+        )
+      end
     end
   end
 end

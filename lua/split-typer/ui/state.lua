@@ -387,6 +387,7 @@ function M.get_combo_stats(state)
       correct = 0,
       total = 0,
       completed = 0,
+      skipped = 0,
       streak = 0,
       best_streak = 0,
       keystrokes = 0,
@@ -398,14 +399,18 @@ function M.get_combo_stats(state)
 
   local completed = 0
   local correct = 0
+  local skipped = 0
   for _, result in pairs(state.combo_results) do
     completed = completed + 1
-    if result.correct then
+    if result.skipped then
+      skipped = skipped + 1
+    elseif result.correct then
       correct = correct + 1
     end
   end
 
-  local accuracy = completed > 0 and (correct / completed * 100) or 100
+  local attempted = completed - skipped
+  local accuracy = attempted > 0 and (correct / attempted * 100) or 100
   local cpm = elapsed > 0 and (completed / (elapsed / 60)) or 0
   local score = math.floor(cpm * (accuracy / 100) * (accuracy / 100))
 
@@ -418,6 +423,7 @@ function M.get_combo_stats(state)
     correct = correct,
     total = #state.combos,
     completed = completed,
+    skipped = skipped,
     keystrokes = state.keystroke_count,
     streak = state.streak,
     best_streak = state.best_streak,

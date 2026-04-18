@@ -180,7 +180,10 @@ local function save_stats()
   local entry = {
     schema_version = 3,
     date = os.date("%Y-%m-%d %H:%M:%S"),
+    mode = state.mode == "timed" and "timed" or "typing",
     category = state.category_id,
+    speed = stats.wpm,
+    speed_unit = "wpm",
     wpm = stats.wpm,
     gross_wpm = stats.gross_wpm,
     accuracy = stats.accuracy,
@@ -227,8 +230,11 @@ local function save_combo_stats()
 
   append_history({
     date = os.date("%Y-%m-%d %H:%M:%S"),
+    mode = "combo",
     category = state.category_id,
-    wpm = stats.cpm,
+    speed = stats.cpm,
+    speed_unit = "cpm",
+    cpm = stats.cpm,
     accuracy = stats.accuracy,
     score = stats.score,
     errors = stats.errors,
@@ -245,8 +251,11 @@ local function save_reaction_stats()
 
   append_history({
     date = os.date("%Y-%m-%d %H:%M:%S"),
+    mode = "reaction",
     category = state.category_id,
-    wpm = stats.cpm,
+    speed = stats.cpm,
+    speed_unit = "cpm",
+    cpm = stats.cpm,
     accuracy = stats.accuracy,
     score = stats.score,
     errors = stats.errors,
@@ -415,15 +424,24 @@ function M.restart_current_text()
     return
   end
 
-  local opts = state_mod.apply_strictness({
+  local text = state.target
+  local opts = {
     category_id = state.category_id,
     exercise_idx = state.exercise_idx,
-  }, state.strictness)
-  state_mod.reset_typing_session(state, state.target, opts)
+    generated_desc = state.generated_desc,
+    transition_focus_class = state.transition_focus_class,
+    no_backspace = state.no_backspace,
+    error_limit = state.error_limit,
+    repeat_until_clean = state.repeat_until_clean,
+    timed_mode = state.timed_mode,
+    timed_duration = state.timed_duration,
+    chunk_generator = state.chunk_generator,
+  }
+  state_mod.reset_typing_session(state, text, opts)
 
   window.ensure_window(state, M.cleanup)
   window.clear_buffer(state)
-  set_buffer_text(state.target)
+  set_buffer_text(text)
   typing.setup_keymaps(ctx)
   typing.update_display(ctx)
 end

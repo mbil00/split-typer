@@ -121,6 +121,10 @@ local _words = nil
 local _filter_cache = {}
 local _custom_words = {}
 
+local function is_supported_custom_word(word)
+  return word:match("^[ -~]+$") ~= nil
+end
+
 local function get_all_words()
   if _words then
     return _words
@@ -146,14 +150,18 @@ end
 --- entry is split on whitespace so callers can pass either clean words or
 --- raw chunks read from a file. Invalidates cached lookups.
 --- @param list string[]|nil
+--- @return { loaded: integer, skipped_unsupported: integer }
 function M.set_extra_words(list)
   _custom_words = {}
   local seen = {}
+  local skipped_unsupported = 0
   if list then
     for _, entry in ipairs(list) do
       if type(entry) == "string" then
         for w in entry:gmatch("%S+") do
-          if not seen[w] then
+          if not is_supported_custom_word(w) then
+            skipped_unsupported = skipped_unsupported + 1
+          elseif not seen[w] then
             _custom_words[#_custom_words + 1] = w
             seen[w] = true
           end
@@ -163,6 +171,10 @@ function M.set_extra_words(list)
   end
   _words = nil
   _filter_cache = {}
+  return {
+    loaded = #_custom_words,
+    skipped_unsupported = skipped_unsupported,
+  }
 end
 
 --- Whether a non-empty custom word pool has been configured.

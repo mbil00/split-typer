@@ -47,6 +47,18 @@ function M.read_json(path, default)
     return decoded
   end
 
+  local corrupt_path = string.format("%s.corrupt.%d", path, os.time())
+  local renamed = os.rename(path, corrupt_path)
+  vim.schedule(function()
+    local msg = "split-typer: failed to decode JSON at " .. path
+    if renamed then
+      msg = msg .. " (moved to " .. corrupt_path .. ")"
+    else
+      msg = msg .. " (could not preserve corrupt file)"
+    end
+    vim.notify(msg, vim.log.levels.WARN)
+  end)
+
   return default
 end
 

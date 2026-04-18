@@ -51,6 +51,10 @@ function M.show_combo_results(ctx)
   hl(17, #lines[#lines], stats.accuracy >= 95 and "SplitTyperGood" or (stats.accuracy >= 80 and "SplitTyperOk" or "SplitTyperBad"))
   add(string.format("    Correct:     %d / %d", stats.correct, stats.total))
   hl(17, #lines[#lines], stats.correct == stats.total and "SplitTyperGood" or "SplitTyperOk")
+  if (stats.skipped or 0) > 0 then
+    add(string.format("    Skipped:     %d", stats.skipped))
+    hl(17, #lines[#lines], "SplitTyperPending")
+  end
   add(string.format("    Errors:      %d", stats.errors))
   hl(17, #lines[#lines], stats.errors > 0 and "SplitTyperBad" or "SplitTyperGood")
   add(string.format("    Best streak: %d", stats.best_streak))

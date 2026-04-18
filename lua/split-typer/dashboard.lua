@@ -32,6 +32,11 @@ local function get_timed_history(history)
   return timed
 end
 
+local function is_typing_history_item(item)
+  local mode = item.mode
+  return mode == nil or mode == "typing" or mode == "timed"
+end
+
 local function history_uncorrected_accuracy(item)
   return item.uncorrected_accuracy or item.accuracy or 0
 end
@@ -314,6 +319,7 @@ function M.render(buf, ns, win, opts)
   add_sep("Overview")
 
   local total_sessions = #history
+  local typing_history = {}
   local total_time = 0
   local total_chars = 0
   local wpm_sum = 0
@@ -326,20 +332,23 @@ function M.render(buf, ns, win, opts)
   for _, h in ipairs(history) do
     total_time = total_time + (h.time or 0)
     total_chars = total_chars + (h.chars or 0)
-    wpm_sum = wpm_sum + (h.wpm or 0)
-    uncorrected_acc_sum = uncorrected_acc_sum + history_uncorrected_accuracy(h)
-    corrected_acc_sum = corrected_acc_sum + history_corrected_accuracy(h)
-    backspace_rate_sum = backspace_rate_sum + history_backspaces_per_100(h)
-    if history_hesitations_per_100(h) ~= nil then
-      hesitation_rate_sum = hesitation_rate_sum + history_hesitations_per_100(h)
-      hesitation_rate_count = hesitation_rate_count + 1
+    if is_typing_history_item(h) then
+      typing_history[#typing_history + 1] = h
+      wpm_sum = wpm_sum + (h.wpm or h.speed or 0)
+      uncorrected_acc_sum = uncorrected_acc_sum + history_uncorrected_accuracy(h)
+      corrected_acc_sum = corrected_acc_sum + history_corrected_accuracy(h)
+      backspace_rate_sum = backspace_rate_sum + history_backspaces_per_100(h)
+      if history_hesitations_per_100(h) ~= nil then
+        hesitation_rate_sum = hesitation_rate_sum + history_hesitations_per_100(h)
+        hesitation_rate_count = hesitation_rate_count + 1
+      end
     end
   end
 
-  local avg_wpm = total_sessions > 0 and math.floor(wpm_sum / total_sessions) or 0
-  local avg_uncorrected_acc = total_sessions > 0 and (math.floor(uncorrected_acc_sum / total_sessions * 10) / 10) or 0
-  local avg_corrected_acc = total_sessions > 0 and (math.floor(corrected_acc_sum / total_sessions * 10) / 10) or 0
-  local avg_backspace_rate = total_sessions > 0 and (math.floor(backspace_rate_sum / total_sessions * 10) / 10) or 0
+  local avg_wpm = #typing_history > 0 and math.floor(wpm_sum / #typing_history) or 0
+  local avg_uncorrected_acc = #typing_history > 0 and (math.floor(uncorrected_acc_sum / #typing_history * 10) / 10) or 0
+  local avg_corrected_acc = #typing_history > 0 and (math.floor(corrected_acc_sum / #typing_history * 10) / 10) or 0
+  local avg_backspace_rate = #typing_history > 0 and (math.floor(backspace_rate_sum / #typing_history * 10) / 10) or 0
   local avg_hesitation_rate = hesitation_rate_count > 0 and (math.floor(hesitation_rate_sum / hesitation_rate_count * 10) / 10) or nil
 
   local hours = math.floor(total_time / 3600)
@@ -376,13 +385,13 @@ function M.render(buf, ns, win, opts)
   add("")
 
   -- WPM Trend
-  local last_n = math.min(40, #history)
+  local last_n = math.min(40, #typing_history)
   if last_n > 0 then
     add_sep(string.format("WPM Trend (last %d sessions)", last_n))
 
     local wpm_values = {}
-    for i = #history - last_n + 1, #history do
-      wpm_values[#wpm_values + 1] = history[i].wpm or 0
+    for i = #typing_history - last_n + 1, #typing_history do
+      wpm_values[#wpm_values + 1] = typing_history[i].wpm or typing_history[i].speed or 0
     end
 
     local chart_lines, chart_hls = render_chart(wpm_values, chart_width, 6, { good = 50, ok = 25 })
@@ -399,8 +408,8 @@ function M.render(buf, ns, win, opts)
     add_sep(string.format("Accuracy Trend (last %d sessions)", last_n))
 
     local acc_values = {}
-    for i = #history - last_n + 1, #history do
-      acc_values[#acc_values + 1] = history_uncorrected_accuracy(history[i])
+    for i = #typing_history - last_n + 1, #typing_history do
+      acc_values[#acc_values + 1] = history_uncorrected_accuracy(typing_history[i])
     end
 
     local acc_lines, acc_hls = render_chart(acc_values, chart_width, 6, { good = 95, ok = 85 })
@@ -418,11 +427,11 @@ function M.render(buf, ns, win, opts)
     local corrected_values = {}
     local backspace_values = {}
     local hesitation_values = {}
-    for i = #history - last_n + 1, #history do
-      corrected_values[#corrected_values + 1] = history_corrected_accuracy(history[i])
-      backspace_values[#backspace_values + 1] = history_backspaces_per_100(history[i])
-      if history_hesitations_per_100(history[i]) ~= nil then
-        hesitation_values[#hesitation_values + 1] = history_hesitations_per_100(history[i])
+    for i = #typing_history - last_n + 1, #typing_history do
+      corrected_values[#corrected_values + 1] = history_corrected_accuracy(typing_history[i])
+      backspace_values[#backspace_values + 1] = history_backspaces_per_100(typing_history[i])
+      if history_hesitations_per_100(typing_history[i]) ~= nil then
+        hesitation_values[#hesitation_values + 1] = history_hesitations_per_100(typing_history[i])
       end
     end
 
@@ -483,7 +492,15 @@ function M.render(buf, ns, win, opts)
     for _, h in ipairs(history) do
       local cat = h.category or "?"
       if not best[cat] or (h.score or 0) > (best[cat].score or 0) then
-        best[cat] = { category = cat, wpm = h.wpm, accuracy = h.accuracy, score = h.score }
+        best[cat] = {
+          category = cat,
+          wpm = h.wpm,
+          cpm = h.cpm,
+          speed = h.speed,
+          speed_unit = h.speed_unit,
+          accuracy = h.accuracy,
+          score = h.score,
+        }
       end
     end
 
@@ -502,7 +519,9 @@ function M.render(buf, ns, win, opts)
       local b = sorted[i]
       local cat = exercises.get_category(b.category)
       local name = cat and cat.name or b.category
-      local line = string.format("    %-24s %3d WPM  %5.1f%%  score: %d", name, b.wpm or 0, b.accuracy or 0, b.score or 0)
+      local speed = b.speed or b.wpm or b.cpm or 0
+      local unit = (b.speed_unit or (b.cpm and "cpm") or "wpm"):upper()
+      local line = string.format("    %-24s %3d %s  %5.1f%%  score: %d", name, speed, unit, b.accuracy or 0, b.score or 0)
       add(line)
       local score_hl = (b.score or 0) >= 400 and "SplitTyperGood" or ((b.score or 0) >= 100 and "SplitTyperOk" or "SplitTyperStats")
       add_hl(#line - #tostring(b.score or 0), #line, score_hl)
