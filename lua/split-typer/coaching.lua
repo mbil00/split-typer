@@ -97,11 +97,19 @@ local function build_course_recommendation(opts)
   local stage = opts.stage
   local stage_prog = opts.stage_prog
   local correction_gap = (stats.corrected_accuracy or 100) - (stats.uncorrected_accuracy or stats.accuracy or 100)
+  local hesitation_rate = stats.hesitations_per_100_chars or 0
+  local avg_pause = stats.avg_hesitation_ms or 0
 
   if not opts.passed_exercise then
     if opts.session_transition_focus and opts.session_transition_focus.class_name then
       return {
         line = "    Coach:       Transition errors are blocking this stage; run the reinforcement drill, then retry cleanly",
+        hl = "SplitTyperBad",
+      }
+    end
+    if hesitation_rate >= 3 or avg_pause >= 1800 then
+      return {
+        line = "    Coach:       You are hesitating before the reach; shrink the pace until the next key feels obvious sooner",
         hl = "SplitTyperBad",
       }
     end
@@ -182,6 +190,26 @@ local function build_benchmark_recommendation(opts)
   local stats = opts.stats
   local latest = opts.benchmark_info and opts.benchmark_info.latest or nil
   local baseline = opts.benchmark_info and opts.benchmark_info.first or nil
+  local benchmark_id = opts.benchmark_id or ""
+
+  if benchmark_id == "benchmark_covered_90s" then
+    if (stats.hesitations_per_100_chars or 0) >= 3 then
+      return {
+        line = "    Coach:       Covered-key work is exposing map uncertainty; keep your eyes up and accept a slower, cleaner pace",
+        hl = "SplitTyperBad",
+      }
+    end
+    if (stats.corrected_accuracy or 100) < 95 then
+      return {
+        line = "    Coach:       Do not force speed on covered-key reps; prove you can stay eyes-up without leaning on corrections",
+        hl = "SplitTyperBad",
+      }
+    end
+    return {
+      line = "    Coach:       This benchmark is about attentional freedom; keep it honest and compare it only against other covered-key runs",
+      hl = "SplitTyperGood",
+    }
+  end
 
   if latest and baseline and (latest.wpm or 0) >= (baseline.wpm or 0) + 5 then
     return {
@@ -207,10 +235,18 @@ local function build_timed_recommendation(opts)
   local stats = opts.stats
   local decay = opts.decay
   local correction_gap = (stats.corrected_accuracy or 100) - (stats.uncorrected_accuracy or stats.accuracy or 100)
+  local hesitation_rate = stats.hesitations_per_100_chars or 0
 
   if decay and (decay.wpm_delta <= -6 or decay.accuracy_delta <= -3 or decay.efficiency_delta <= -4) then
     return {
       line = "    Coach:       Late-session drift is the issue; start a touch slower or shorten the next rep so the finish stays clean",
+      hl = "SplitTyperBad",
+    }
+  end
+
+  if hesitation_rate >= 3 then
+    return {
+      line = "    Coach:       Rhythm is breaking before speed collapses; pick a pace that removes the long pauses between reaches",
       hl = "SplitTyperBad",
     }
   end
@@ -232,6 +268,8 @@ local function build_profile_recommendation(opts, profiles)
   local stats = opts.stats
   local profile = M.history_category_profile(opts.category_id)
   local correction_gap = (stats.corrected_accuracy or 100) - (stats.uncorrected_accuracy or stats.accuracy or 100)
+  local hesitation_rate = stats.hesitations_per_100_chars or 0
+  local avg_pause = stats.avg_hesitation_ms or 0
 
   if profile == "code" then
     if profiles.prose then
@@ -243,6 +281,12 @@ local function build_profile_recommendation(opts, profiles)
           hl = "SplitTyperBad",
         }
       end
+    end
+    if hesitation_rate >= 3 or avg_pause >= 1800 then
+      return {
+        line = "    Coach:       Code flow is pausing too often between symbols or delimiters; reduce speed until the line reconnects",
+        hl = "SplitTyperOk",
+      }
     end
     if correction_gap >= 4 or (stats.backspaces_per_100_chars or 0) >= 6 then
       return {
@@ -260,6 +304,12 @@ local function build_profile_recommendation(opts, profiles)
     if profiles.code and ((profiles.code.avg_wpm <= stats.wpm - 8) or (profiles.code.avg_corrected <= stats.corrected_accuracy - 3)) then
       return {
         line = "    Coach:       Prose is ahead of code overall; keep a few code sessions in the mix so punctuation does not lag",
+        hl = "SplitTyperOk",
+      }
+    end
+    if hesitation_rate >= 3 or avg_pause >= 1800 then
+      return {
+        line = "    Coach:       The sentence rhythm is stalling between words; aim for continuity before trying to go faster",
         hl = "SplitTyperOk",
       }
     end
@@ -287,6 +337,12 @@ local function build_profile_recommendation(opts, profiles)
           hl = "SplitTyperBad",
         }
       end
+    end
+    if hesitation_rate >= 3 or avg_pause >= 1800 then
+      return {
+        line = "    Coach:       The drill has too many stop-start pauses; repeat it slower until the rhythm becomes continuous",
+        hl = "SplitTyperOk",
+      }
     end
     if correction_gap >= 4 or (stats.backspaces_per_100_chars or 0) >= 6 then
       return {
@@ -333,6 +389,18 @@ function M.history_category_profile(category_id)
     if cat.group == "code_prose" then
       return cat.id == "prose" and "prose" or "code"
     end
+    if cat.group == "advanced" then
+      if cat.id == "advanced_prose_fluency" then
+        return "prose"
+      end
+      if cat.id == "advanced_code_punctuation"
+        or cat.id == "advanced_shell_cli"
+        or cat.id == "advanced_delimiters"
+      then
+        return "code"
+      end
+      return "drill"
+    end
     if cat.group == "general" or cat.group == "characters" or cat.group == "fingers" or cat.group == "custom" then
       return "drill"
     end
@@ -378,7 +446,7 @@ function M.build_course_overview(course, level_id)
   elseif phase == "Stabilization" then
     focus_line = "  Focus: Clean runs matter more now; reduce backspace dependence and make common transitions feel routine."
   elseif phase == "Transfer" then
-    focus_line = "  Focus: Most letters are unlocked; move skill into mixed text instead of relying on isolated drills only."
+    focus_line = "  Focus: Mixed text matters now; prove the map in prose, commands, or code instead of staying in isolated drills."
   elseif phase == "Automaticity" then
     focus_line = "  Focus: Treat this as a retention check; delayed validation should confirm the pattern still feels easy later."
   else

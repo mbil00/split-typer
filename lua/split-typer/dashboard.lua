@@ -82,6 +82,18 @@ local function history_category_profile(category_id)
     if cat.group == "code_prose" then
       return cat.id == "prose" and "prose" or "code"
     end
+    if cat.group == "advanced" then
+      if cat.id == "advanced_prose_fluency" then
+        return "prose"
+      end
+      if cat.id == "advanced_code_punctuation"
+        or cat.id == "advanced_shell_cli"
+        or cat.id == "advanced_delimiters"
+      then
+        return "code"
+      end
+      return "drill"
+    end
     if cat.group == "general" or cat.group == "characters" or cat.group == "fingers" or cat.group == "custom" then
       return "drill"
     end
@@ -227,12 +239,22 @@ local function render_chart(values, width, height, thresholds)
         local col_pos = label_w + 2 + col - 1 -- offset into the string
         local hl
         if thresholds then
-          if info.value >= thresholds.good then
-            hl = "SplitTyperGood"
-          elseif info.value >= thresholds.ok then
-            hl = "SplitTyperOk"
+          if thresholds.direction == "lower" then
+            if info.value <= thresholds.good then
+              hl = "SplitTyperGood"
+            elseif info.value <= thresholds.ok then
+              hl = "SplitTyperOk"
+            else
+              hl = "SplitTyperBad"
+            end
           else
-            hl = "SplitTyperBad"
+            if info.value >= thresholds.good then
+              hl = "SplitTyperGood"
+            elseif info.value >= thresholds.ok then
+              hl = "SplitTyperOk"
+            else
+              hl = "SplitTyperBad"
+            end
           end
         else
           hl = "SplitTyperProgress"
@@ -419,7 +441,7 @@ function M.render(buf, ns, win, opts)
     ))
     add_hl(31, #lines[#lines], "SplitTyperStats")
 
-    local backspace_lines, backspace_hls = render_chart(backspace_values, chart_width, 6)
+    local backspace_lines, backspace_hls = render_chart(backspace_values, chart_width, 6, { direction = "lower", good = 3, ok = 8 })
     base = #lines
     for _, cl in ipairs(backspace_lines) do
       add("    " .. cl)
@@ -441,7 +463,7 @@ function M.render(buf, ns, win, opts)
       ))
       add_hl(28, #lines[#lines], "SplitTyperStats")
 
-      local hesitation_lines, hesitation_hls = render_chart(hesitation_values, chart_width, 6)
+      local hesitation_lines, hesitation_hls = render_chart(hesitation_values, chart_width, 6, { direction = "lower", good = 1, ok = 3 })
       base = #lines
       for _, cl in ipairs(hesitation_lines) do
         add("    " .. cl)

@@ -519,23 +519,25 @@ local function gen_mastery(level)
 end
 
 local transfer_templates = {
-  { min_level = 4, kind = "prose", text = "the task is clear and the data is shared" },
-  { min_level = 4, kind = "prose", text = "we read the same file and share the result" },
-  { min_level = 4, kind = "prose", text = "a small change can alter the state and the path" },
-  { min_level = 5, kind = "prose", text = "the team can learn the pattern and retain the skill" },
-  { min_level = 5, kind = "prose", text = "real text should start early so the lesson can transfer" },
-  { min_level = 6, kind = "prose", text = "steady practice makes the movement simpler and more stable" },
-  { min_level = 7, kind = "prose", text = "the current level should feel calm before the next one starts" },
-  { min_level = 7, kind = "command", text = "cd src\nls tests" },
-  { min_level = 7, kind = "command", text = "git status\ngit add data" },
-  { min_level = 8, kind = "command", text = "grep state data\nsort data" },
-  { min_level = 8, kind = "command", text = "cat notes.txt\nrm stale.tmp" },
-  { min_level = 9, kind = "command", text = "./start.sh\n./run test" },
-  { min_level = 9, kind = "code", text = "if state then\n  return data\nend" },
-  { min_level = 10, kind = "code", text = "local path = \"data.txt\"\nprint(path)" },
-  { min_level = 10, kind = "code", text = "for item in list do\n  print(item)\nend" },
-  { min_level = 11, kind = "command", text = "curl 127.0.0.1:8080\nping 10.0.0.1" },
-  { min_level = 11, kind = "code", text = "port = 8080\nretry = 3" },
+  { min_level = 4, max_level = 5, kind = "prose", text = "the task is clear and the data is shared" },
+  { min_level = 4, max_level = 5, kind = "prose", text = "we read the same file and share the result" },
+  { min_level = 4, max_level = 5, kind = "prose", text = "a small change can alter the state and the path" },
+  { min_level = 5, max_level = 6, kind = "prose", text = "the team can learn the pattern and retain the skill" },
+  { min_level = 5, max_level = 6, kind = "prose", text = "real text should start early so the lesson can transfer" },
+  { min_level = 6, max_level = 7, kind = "prose", text = "steady practice makes the movement simpler and more stable" },
+  { min_level = 6, max_level = 7, kind = "prose", text = "small pauses fade when the reach pattern starts to feel settled" },
+  { min_level = 7, max_level = 9, kind = "prose", text = "the current level should feel calm before the next one starts" },
+  { min_level = 7, max_level = 9, kind = "prose", text = "real transfer starts when short drills begin to feel like actual text" },
+  { min_level = 7, max_level = 8, kind = "command", text = "cd src\nls tests" },
+  { min_level = 7, max_level = 8, kind = "command", text = "git status\ngit add data" },
+  { min_level = 8, max_level = 9, kind = "command", text = "grep state data\nsort data" },
+  { min_level = 8, max_level = 9, kind = "command", text = "cat notes.txt\nrm stale.tmp" },
+  { min_level = 9, max_level = 10, kind = "command", text = "./start.sh\n./run test" },
+  { min_level = 9, max_level = 10, kind = "code", text = "if state then\n  return data\nend" },
+  { min_level = 10, max_level = 11, kind = "code", text = "local path = \"data.txt\"\nprint(path)" },
+  { min_level = 10, max_level = 11, kind = "code", text = "for item in list do\n  print(item)\nend" },
+  { min_level = 11, max_level = 12, kind = "command", text = "curl 127.0.0.1:8080\nping 10.0.0.1" },
+  { min_level = 11, max_level = 12, kind = "code", text = "port = 8080\nretry = 3" },
   { min_level = 12, kind = "code", text = "if (ok) { return data[i]; }" },
   { min_level = 12, kind = "code", text = "map[key] = value;\nlist.push(item);" },
   { min_level = 12, kind = "code", text = "fn parse(input: &str) -> bool { input != \"\" }" },
@@ -550,7 +552,10 @@ local function transfer_template_pool(level)
   }
 
   for _, item in ipairs(transfer_templates) do
-    if level.id >= item.min_level and text_fits_level(item.text, allowed) then
+    if level.id >= item.min_level
+      and (not item.max_level or level.id <= item.max_level)
+      and text_fits_level(item.text, allowed)
+    then
       matches[item.kind][#matches[item.kind] + 1] = item.text
     end
   end
@@ -575,16 +580,31 @@ local function gen_transfer(level)
   local code = pools.code
   local picks = {}
 
-  if level.id <= 6 then
+  if level.id <= 5 then
     if #prose > 0 then
       picks[#picks + 1] = prose[math.random(1, #prose)]
+    end
+  elseif level.id <= 7 then
+    if #prose > 0 then
+      picks[#picks + 1] = prose[math.random(1, #prose)]
+    end
+    if #prose > 1 and math.random() < 0.4 then
+      local extra = prose[math.random(1, #prose)]
+      if extra ~= picks[1] then
+        picks[#picks + 1] = extra
+      end
     end
   elseif level.id <= 9 then
-    if #prose > 0 then
-      picks[#picks + 1] = prose[math.random(1, #prose)]
-    end
     if #command > 0 then
       picks[#picks + 1] = command[math.random(1, #command)]
+    end
+    if #command > 0 then
+      local extra = command[math.random(1, #command)]
+      if extra ~= picks[1] then
+        picks[#picks + 1] = extra
+      end
+    elseif #prose > 0 then
+      picks[#picks + 1] = prose[math.random(1, #prose)]
     end
   else
     local mixed = {}
@@ -610,7 +630,7 @@ local function gen_transfer(level)
     return picks[1]
   end
 
-  if #picks == 1 and level.id >= 8 and #prose > 1 and math.random() < 0.5 then
+  if #picks == 1 and level.id >= 10 and #prose > 1 and math.random() < 0.5 then
     local extra = prose[math.random(1, #prose)]
     if extra ~= picks[1] then
       picks[#picks + 1] = extra
