@@ -31,6 +31,25 @@ local function get_timed_history(history)
   return timed
 end
 
+local function history_uncorrected_accuracy(item)
+  return item.uncorrected_accuracy or item.accuracy or 0
+end
+
+local function history_corrected_accuracy(item)
+  return item.corrected_accuracy or item.efficiency or item.accuracy or 0
+end
+
+local function history_backspaces_per_100(item)
+  if item.backspaces_per_100_chars ~= nil then
+    return item.backspaces_per_100_chars
+  end
+  local chars = item.chars or 0
+  if chars > 0 then
+    return ((item.backspaces or 0) / chars) * 100
+  end
+  return 0
+end
+
 -- Render an ASCII chart from a list of values.
 -- Returns lines (strings) and highlights ({ line_offset, col_start, col_end, hl_group }).
 local function render_chart(values, width, height, thresholds)
@@ -187,17 +206,23 @@ function M.render(buf, ns, win, opts)
   local total_time = 0
   local total_chars = 0
   local wpm_sum = 0
-  local acc_sum = 0
+  local uncorrected_acc_sum = 0
+  local corrected_acc_sum = 0
+  local backspace_rate_sum = 0
 
   for _, h in ipairs(history) do
     total_time = total_time + (h.time or 0)
     total_chars = total_chars + (h.chars or 0)
     wpm_sum = wpm_sum + (h.wpm or 0)
-    acc_sum = acc_sum + (h.accuracy or 0)
+    uncorrected_acc_sum = uncorrected_acc_sum + history_uncorrected_accuracy(h)
+    corrected_acc_sum = corrected_acc_sum + history_corrected_accuracy(h)
+    backspace_rate_sum = backspace_rate_sum + history_backspaces_per_100(h)
   end
 
   local avg_wpm = total_sessions > 0 and math.floor(wpm_sum / total_sessions) or 0
-  local avg_acc = total_sessions > 0 and (math.floor(acc_sum / total_sessions * 10) / 10) or 0
+  local avg_uncorrected_acc = total_sessions > 0 and (math.floor(uncorrected_acc_sum / total_sessions * 10) / 10) or 0
+  local avg_corrected_acc = total_sessions > 0 and (math.floor(corrected_acc_sum / total_sessions * 10) / 10) or 0
+  local avg_backspace_rate = total_sessions > 0 and (math.floor(backspace_rate_sum / total_sessions * 10) / 10) or 0
 
   local hours = math.floor(total_time / 3600)
   local mins = math.floor((total_time % 3600) / 60)
@@ -214,9 +239,15 @@ function M.render(buf, ns, win, opts)
   add(string.format("    Avg WPM:       %d", avg_wpm))
   local avg_wpm_hl = avg_wpm >= 50 and "SplitTyperGood" or (avg_wpm >= 25 and "SplitTyperOk" or "SplitTyperBad")
   add_hl(19, #lines[#lines], avg_wpm_hl)
-  add(string.format("    Avg accuracy:  %.1f%%", avg_acc))
-  local avg_acc_hl = avg_acc >= 95 and "SplitTyperGood" or (avg_acc >= 85 and "SplitTyperOk" or "SplitTyperBad")
-  add_hl(19, #lines[#lines], avg_acc_hl)
+  add(string.format("    Avg uncorrected acc: %.1f%%", avg_uncorrected_acc))
+  local avg_uncorrected_hl = avg_uncorrected_acc >= 95 and "SplitTyperGood" or (avg_uncorrected_acc >= 85 and "SplitTyperOk" or "SplitTyperBad")
+  add_hl(25, #lines[#lines], avg_uncorrected_hl)
+  add(string.format("    Avg corrected acc:   %.1f%%", avg_corrected_acc))
+  local avg_corrected_hl = avg_corrected_acc >= 95 and "SplitTyperGood" or (avg_corrected_acc >= 85 and "SplitTyperOk" or "SplitTyperBad")
+  add_hl(25, #lines[#lines], avg_corrected_hl)
+  add(string.format("    Avg backsp/100:      %.1f", avg_backspace_rate))
+  local avg_backspace_hl = avg_backspace_rate <= 3 and "SplitTyperGood" or (avg_backspace_rate <= 8 and "SplitTyperOk" or "SplitTyperBad")
+  add_hl(25, #lines[#lines], avg_backspace_hl)
   add("")
 
   -- WPM Trend
@@ -244,7 +275,7 @@ function M.render(buf, ns, win, opts)
 
     local acc_values = {}
     for i = #history - last_n + 1, #history do
-      acc_values[#acc_values + 1] = history[i].accuracy or 0
+      acc_values[#acc_values + 1] = history_uncorrected_accuracy(history[i])
     end
 
     local acc_lines, acc_hls = render_chart(acc_values, chart_width, 6, { good = 95, ok = 85 })
@@ -253,6 +284,40 @@ function M.render(buf, ns, win, opts)
       add("    " .. cl)
     end
     for _, ch in ipairs(acc_hls) do
+      highlights[#highlights + 1] = { base + ch[1], ch[2] + 4, ch[3] + 4, ch[4] }
+    end
+    add("")
+
+    add_sep(string.format("Correction Dependence (last %d sessions)", last_n))
+
+    local corrected_values = {}
+    local backspace_values = {}
+    for i = #history - last_n + 1, #history do
+      corrected_values[#corrected_values + 1] = history_corrected_accuracy(history[i])
+      backspace_values[#backspace_values + 1] = history_backspaces_per_100(history[i])
+    end
+
+    add(string.format(
+      "    Recent corrected acc avg: %.1f%%    recent backsp/100 avg: %.1f",
+      (#corrected_values > 0 and (function()
+        local sum = 0
+        for _, v in ipairs(corrected_values) do sum = sum + v end
+        return math.floor((sum / #corrected_values) * 10) / 10
+      end)() or 0),
+      (#backspace_values > 0 and (function()
+        local sum = 0
+        for _, v in ipairs(backspace_values) do sum = sum + v end
+        return math.floor((sum / #backspace_values) * 10) / 10
+      end)() or 0)
+    ))
+    add_hl(31, #lines[#lines], "SplitTyperStats")
+
+    local backspace_lines, backspace_hls = render_chart(backspace_values, chart_width, 6)
+    base = #lines
+    for _, cl in ipairs(backspace_lines) do
+      add("    " .. cl)
+    end
+    for _, ch in ipairs(backspace_hls) do
       highlights[#highlights + 1] = { base + ch[1], ch[2] + 4, ch[3] + 4, ch[4] }
     end
     add("")

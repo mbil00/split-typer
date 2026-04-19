@@ -150,12 +150,17 @@ local function save_stats()
   local timed_postmortem = build_timed_postmortem(typed_char_map)
 
   append_history({
+    schema_version = 2,
     date = os.date("%Y-%m-%d %H:%M:%S"),
     category = state.category_id,
     wpm = stats.wpm,
     gross_wpm = stats.gross_wpm,
     accuracy = stats.accuracy,
+    uncorrected_accuracy = stats.uncorrected_accuracy,
+    corrected_accuracy = stats.corrected_accuracy,
     efficiency = stats.efficiency,
+    backspaces_per_100_chars = stats.backspaces_per_100_chars,
+    uncorrected_errors_per_100_chars = stats.uncorrected_errors_per_100_chars,
     score = stats.score,
     errors = stats.errors,
     backspaces = stats.backspaces,
