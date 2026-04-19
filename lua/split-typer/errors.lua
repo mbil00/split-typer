@@ -847,6 +847,56 @@ function M.get_session_worst_bigrams(error_log, char_map, n, max_pos)
   return out
 end
 
+--- Identify the dominant transition problem in a single session.
+--- @param error_log { expected: string, actual: string, pos: number }[]
+--- @param char_map { char: string, is_newline: boolean }[]
+--- @param max_pos? number
+--- @return { class_id: string, class_name: string, transitions: string[], session_bigrams: table[] }|nil
+function M.get_session_transition_focus(error_log, char_map, max_pos)
+  local session_bigrams = M.get_session_worst_bigrams(error_log, char_map, 6, max_pos)
+  if #session_bigrams == 0 then
+    return nil
+  end
+
+  local class_scores = {}
+  local class_names = {}
+  local class_transitions = {}
+  local class_seen = {}
+
+  for _, item in ipairs(session_bigrams) do
+    for idx, class_id in ipairs(item.class_ids or {}) do
+      class_scores[class_id] = (class_scores[class_id] or 0) + item.errors + item.error_rate
+      class_names[class_id] = (item.class_names and item.class_names[idx]) or get_class_display_name(class_id)
+      class_transitions[class_id] = class_transitions[class_id] or {}
+      class_seen[class_id] = class_seen[class_id] or {}
+      if not class_seen[class_id][item.bigram] then
+        class_seen[class_id][item.bigram] = true
+        class_transitions[class_id][#class_transitions[class_id] + 1] = item.bigram
+      end
+    end
+  end
+
+  local best_class_id = nil
+  local best_score = -math.huge
+  for class_id, score in pairs(class_scores) do
+    if score > best_score then
+      best_score = score
+      best_class_id = class_id
+    end
+  end
+
+  if not best_class_id then
+    return nil
+  end
+
+  return {
+    class_id = best_class_id,
+    class_name = class_names[best_class_id] or get_class_display_name(best_class_id),
+    transitions = class_transitions[best_class_id] or { session_bigrams[1].bigram },
+    session_bigrams = session_bigrams,
+  }
+end
+
 local function unique_transitions(items, field, max_items)
   local out = {}
   local seen = {}
@@ -1039,7 +1089,7 @@ function M.generate_targeted_exercise(opts)
 end
 
 --- Generate a targeted exercise focusing on the user's hardest transitions.
---- @param opts? { min_words?: number, max_words?: number, min_transition_hits?: number }
+--- @param opts? { min_words?: number, max_words?: number, min_transition_hits?: number, transitions?: string[], description_override?: string, class_id?: string }
 --- @return string exercise_text
 --- @return string description
 function M.generate_transition_exercise(opts)
@@ -1054,7 +1104,31 @@ function M.generate_transition_exercise(opts)
   else
     focus_class = M.get_worst_transition_classes(1, 10, { weighted = true })[1]
   end
-  local worst = focus_class and M.get_bigrams_for_class(focus_class.class_id, 5, 8) or {}
+  local worst = {}
+  local transitions = {}
+  local seen_transitions = {}
+  for _, transition in ipairs(opts.transitions or {}) do
+    if transition and not seen_transitions[transition] then
+      seen_transitions[transition] = true
+      transitions[#transitions + 1] = transition
+      if #transitions >= 4 then
+        break
+      end
+    end
+  end
+  if #transitions > 0 then
+    for _, transition in ipairs(transitions) do
+      worst[#worst + 1] = {
+        bigram = transition,
+        error_rate = 1,
+        class_ids = focus_class and { focus_class.class_id } or nil,
+        class_names = focus_class and { focus_class.name } or nil,
+      }
+    end
+  else
+    worst = focus_class and M.get_bigrams_for_class(focus_class.class_id, 5, 8) or {}
+    transitions = unique_transitions(worst, "bigram", 4)
+  end
   if #worst == 0 then
     if opts.class_id then
       local text, desc = M.generate_targeted_exercise({
@@ -1076,8 +1150,9 @@ function M.generate_transition_exercise(opts)
       min_focus_occurrences = opts.min_transition_hits or 12,
     })
   end
-
-  local transitions = unique_transitions(worst, "bigram", 4)
+  if #transitions == 0 then
+    transitions = unique_transitions(worst, "bigram", 4)
+  end
   local warmup = {}
   for _, transition in ipairs(transitions) do
     warmup[#warmup + 1] = string.format("%s %s%s %s", transition, transition, transition, transition)
@@ -1125,6 +1200,13 @@ function M.generate_transition_exercise(opts)
     elseif #worst > 0 then
       prefix = prefix .. " via '" .. worst[1].bigram .. "'"
     end
+  end
+
+  if opts.description_override and #opts.description_override > 0 then
+    return table.concat({
+      table.concat(warmup, "    "),
+      body,
+    }, "\n"), opts.description_override
   end
 
   return table.concat({

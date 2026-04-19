@@ -112,9 +112,11 @@ Course, Weak Key, Weak Transition, and Timed sessions keep their own rules and i
   - **Integration** — all unlocked keys, biased toward your weak spots
   - **Mastery** — a longer run with a tighter gate
 - Each stage must be cleared twice to pass; once cleared, it's still replayable but no longer required
-- Pressing a level key auto-picks a not-yet-passed stage
+- Passed stages also need one delayed validation run after an 8-hour wait before they count as fully validated mastery
+- Pressing a level key auto-picks not-yet-passed work first, then delayed validation reps
 - WPM and accuracy floors rise with each level; the mastery stage always raises them further
-- Uses no-backspace typing throughout
+- Early `Single Key` and `Bigrams` reps on levels 1-3 allow corrections; later reps stay no-backspace
+- Failed course runs can offer a short transition-reinforcement drill based on the movement pattern that broke down in that session
 
 ### Weak Key Practice
 
@@ -155,7 +157,7 @@ Course, Weak Key, Weak Transition, and Timed sessions keep their own rules and i
 - Type the displayed text character by character
 - Characters turn green when correct and red when incorrect
 - `Enter` is used for newline characters
-- `Backspace` works in Normal strictness and is disabled in Precision/Accuracy strictness and course mode
+- `Backspace` works in Normal strictness, is disabled in Precision/Accuracy strictness, and is disabled in most course stages after the early guided reps
 - `Esc` returns to the relevant previous screen
 - The header shows live net WPM, gross WPM, accuracy, efficiency, error count, and streaks
 

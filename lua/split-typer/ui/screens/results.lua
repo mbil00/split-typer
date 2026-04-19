@@ -392,6 +392,14 @@ function M.show_results(ctx)
       ctx.actions.start_transition_exercise(state.transition_focus_class)
     end)
     ctx.window.map(state, "r", ctx.actions.restart_current_text)
+  elseif state.category_id == "course_transition_reinforcement" then
+    ctx.window.map(state, "n", function()
+      ctx.actions.start_transition_reinforcement(
+        state.transition_focus_class,
+        state.transition_focus_transitions
+      )
+    end)
+    ctx.window.map(state, "r", ctx.actions.restart_current_text)
   elseif state.repeat_until_clean then
     ctx.window.map(state, "n", ctx.actions.restart_current_text)
     ctx.window.map(state, "r", function()

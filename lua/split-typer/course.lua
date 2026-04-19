@@ -5,7 +5,8 @@ local layouts = require("split-typer.layouts")
 
 local M = {}
 
-local PROGRESS_SCHEMA = 2
+local PROGRESS_SCHEMA = 3
+local VALIDATION_DELAY_SECS = 8 * 60 * 60
 
 -- Stage definitions. Each level runs every stage; the stage's deltas/scale
 -- modify the level's baseline gates. A stage is "passed" once it has been
@@ -22,6 +23,8 @@ local stage_defs = {
     eff_delta = 2,
     max_err_delta = 0,
     reps_required = 2,
+    guided_until_level = 3,
+    early_wpm_relief = 2,
   },
   {
     id = "bigrams",
@@ -33,6 +36,8 @@ local stage_defs = {
     eff_delta = 0,
     max_err_delta = 1,
     reps_required = 2,
+    guided_until_level = 3,
+    early_wpm_relief = 2,
   },
   {
     id = "focused",
@@ -44,6 +49,7 @@ local stage_defs = {
     eff_delta = -1,
     max_err_delta = 1,
     reps_required = 2,
+    early_wpm_relief = 1,
   },
   {
     id = "integration",
@@ -66,6 +72,7 @@ local stage_defs = {
     eff_delta = 2,
     max_err_delta = -1,
     reps_required = 2,
+    course_mode = "mastery",
   },
 }
 
@@ -178,10 +185,22 @@ local function clamp_acc(v)
 end
 
 local function build_stage_gate(level, stage_def)
-  local wpm = math.max(6, math.floor(level.base_wpm * stage_def.wpm_scale + 0.5))
+  local wpm = math.floor(level.base_wpm * stage_def.wpm_scale + 0.5)
+  if level.id <= 3 and stage_def.early_wpm_relief then
+    wpm = wpm - stage_def.early_wpm_relief
+  end
+  wpm = math.max(6, wpm)
   local acc = clamp_acc(level.base_acc + stage_def.acc_delta)
   local eff = clamp_acc(level.base_eff + stage_def.eff_delta)
   local max_err = math.max(1, level.base_max_err + stage_def.max_err_delta)
+  local course_mode = stage_def.course_mode
+  if not course_mode then
+    if level.id <= (stage_def.guided_until_level or 0) then
+      course_mode = "guided"
+    else
+      course_mode = "clean"
+    end
+  end
   return {
     id = stage_def.id,
     name = stage_def.name,
@@ -192,6 +211,8 @@ local function build_stage_gate(level, stage_def)
     req_efficiency = eff,
     req_max_errors = max_err,
     reps_required = stage_def.reps_required,
+    course_mode = course_mode,
+    no_backspace = course_mode ~= "guided",
   }
 end
 
@@ -474,16 +495,89 @@ local function blank_progress()
 end
 
 local function blank_stage_progress()
-  return { completed = 0, passed = false, best_wpm = 0, best_accuracy = 0 }
+  return {
+    completed = 0,
+    passed = false,
+    validated = false,
+    validation_runs = 0,
+    first_pass_at = nil,
+    last_pass_at = nil,
+    validated_at = nil,
+    best_wpm = 0,
+    best_accuracy = 0,
+  }
 end
 
 local function blank_level_progress()
   return {
     stages = {},
     passed = false,
+    validated = false,
+    validated_at = nil,
     best_wpm = 0,
     best_accuracy = 0,
   }
+end
+
+local function upgrade_progress(loaded)
+  if loaded.schema_version == PROGRESS_SCHEMA then
+    return loaded
+  end
+
+  local upgraded = blank_progress()
+  upgraded.current_level = loaded.current_level or 1
+
+  if type(loaded.levels) == "table" then
+    for level_key, old_lp in pairs(loaded.levels) do
+      if type(old_lp) == "table" then
+        local new_lp = blank_level_progress()
+        new_lp.passed = old_lp.passed or false
+        new_lp.validated = old_lp.validated or false
+        new_lp.validated_at = old_lp.validated_at
+        new_lp.best_wpm = old_lp.best_wpm or 0
+        new_lp.best_accuracy = old_lp.best_accuracy or 0
+
+        if type(old_lp.stages) == "table" then
+          for _, sd in ipairs(stage_defs) do
+            local old_sp = old_lp.stages[sd.id]
+            if type(old_sp) == "table" then
+              local new_sp = blank_stage_progress()
+              new_sp.completed = old_sp.completed or 0
+              new_sp.passed = old_sp.passed or false
+              if loaded.schema_version >= 3 then
+                new_sp.validated = old_sp.validated or false
+                new_sp.validation_runs = old_sp.validation_runs or 0
+                new_sp.first_pass_at = old_sp.first_pass_at
+                new_sp.last_pass_at = old_sp.last_pass_at
+                new_sp.validated_at = old_sp.validated_at
+              else
+                -- Preserve prior course completion when upgrading from the
+                -- old pass-only schema; new work will require delayed
+                -- validation, but historical progress stays intact.
+                new_sp.validated = new_sp.passed
+                new_sp.validation_runs = new_sp.passed and 1 or 0
+              end
+              new_sp.best_wpm = old_sp.best_wpm or 0
+              new_sp.best_accuracy = old_sp.best_accuracy or 0
+              new_lp.stages[sd.id] = new_sp
+            end
+          end
+        end
+
+        if not old_lp.validated and loaded.schema_version < 3 then
+          new_lp.validated = new_lp.passed
+          if new_lp.validated then
+            new_lp.validated_at = old_lp.validated_at
+          end
+        end
+
+        upgraded.levels[level_key] = new_lp
+      end
+    end
+  end
+
+  upgraded.schema_version = PROGRESS_SCHEMA
+  return upgraded
 end
 
 --- Load progress from disk, resetting if the on-disk schema pre-dates stages.
@@ -496,9 +590,7 @@ function M.load_progress()
   local progress_file = get_progress_file()
   local loaded = storage.read_json(progress_file, blank_progress())
   if loaded.schema_version ~= PROGRESS_SCHEMA then
-    -- Old flat-per-level format cannot be meaningfully mapped onto stages.
-    -- Drop it; the plugin isn't public yet.
-    loaded = blank_progress()
+    loaded = upgrade_progress(loaded)
     storage.write_json(progress_file, loaded)
   end
   _progress = loaded
@@ -529,11 +621,19 @@ function M.get_level_progress(level_id)
   lp.best_wpm = lp.best_wpm or 0
   lp.best_accuracy = lp.best_accuracy or 0
   lp.passed = lp.passed or false
+  lp.validated = lp.validated or false
 
   for _, sd in ipairs(stage_defs) do
     if not lp.stages[sd.id] then
       lp.stages[sd.id] = blank_stage_progress()
     end
+    local sp = lp.stages[sd.id]
+    sp.completed = sp.completed or 0
+    sp.passed = sp.passed or false
+    sp.validated = sp.validated or false
+    sp.validation_runs = sp.validation_runs or 0
+    sp.best_wpm = sp.best_wpm or 0
+    sp.best_accuracy = sp.best_accuracy or 0
   end
   return lp
 end
@@ -565,6 +665,23 @@ local function all_stages_passed(lp)
   return true
 end
 
+local function all_stages_validated(lp)
+  for _, sd in ipairs(stage_defs) do
+    local sp = lp.stages[sd.id]
+    if not sp or not sp.validated then
+      return false
+    end
+  end
+  return true
+end
+
+local function validation_ready(sp, now_ts)
+  if not sp or not sp.first_pass_at then
+    return false
+  end
+  return (now_ts - sp.first_pass_at) >= VALIDATION_DELAY_SECS
+end
+
 --- Record a completed exercise for a specific stage and check for progress.
 --- @param level_id number
 --- @param stage_id string
@@ -574,12 +691,14 @@ end
 --- @param errors number
 --- @return boolean passed_exercise Whether the exercise met the stage gate
 --- @return boolean stage_cleared Whether the stage just became passed
---- @return boolean level_complete Whether the level just became complete
+--- @return boolean stage_validated Whether the stage just became validated
+--- @return boolean level_complete Whether the level just became pass-complete
+--- @return boolean level_validated Whether the level just became fully validated
 function M.record_exercise(level_id, stage_id, wpm, accuracy, efficiency, errors)
   local level = M.get_level(level_id)
-  if not level then return false, false, false end
+  if not level then return false, false, false, false, false end
   local stage = find_stage(level, stage_id)
-  if not stage then return false, false, false end
+  if not stage then return false, false, false, false, false end
 
   local lp = M.get_level_progress(level_id)
   local sp = lp.stages[stage_id]
@@ -595,11 +714,24 @@ function M.record_exercise(level_id, stage_id, wpm, accuracy, efficiency, errors
     and errors <= stage.req_max_errors
 
   local stage_cleared = false
+  local stage_validated = false
   if passed then
+    local now_ts = os.time()
+    local was_passed = sp.passed
+    local was_validated = sp.validated
+    if not sp.first_pass_at then
+      sp.first_pass_at = now_ts
+    end
+    sp.last_pass_at = now_ts
     sp.completed = (sp.completed or 0) + 1
-    if not sp.passed and sp.completed >= stage.reps_required then
+    if not was_passed and sp.completed >= stage.reps_required then
       sp.passed = true
       stage_cleared = true
+    elseif was_passed and not was_validated and validation_ready(sp, now_ts) then
+      sp.validated = true
+      sp.validated_at = now_ts
+      sp.validation_runs = (sp.validation_runs or 0) + 1
+      stage_validated = true
     end
   end
 
@@ -613,8 +745,15 @@ function M.record_exercise(level_id, stage_id, wpm, accuracy, efficiency, errors
     end
   end
 
+  local level_validated = false
+  if not lp.validated and all_stages_validated(lp) then
+    lp.validated = true
+    lp.validated_at = os.time()
+    level_validated = true
+  end
+
   M.save_progress()
-  return passed, stage_cleared, level_complete
+  return passed, stage_cleared, stage_validated, level_complete, level_validated
 end
 
 --- Check if a level is unlocked.
@@ -643,6 +782,29 @@ function M.get_current_level()
   return prog.current_level or 1
 end
 
+--- Return the next level that deserves attention: first incomplete level,
+--- then the first passed-but-unvalidated level, else the current unlocked one.
+--- @return number
+function M.get_focus_level()
+  for _, level in ipairs(M.levels) do
+    if M.is_unlocked(level.id) then
+      local lp = M.get_level_progress(level.id)
+      if not lp.passed then
+        return level.id
+      end
+    end
+  end
+  for _, level in ipairs(M.levels) do
+    if M.is_unlocked(level.id) then
+      local lp = M.get_level_progress(level.id)
+      if lp.passed and not lp.validated then
+        return level.id
+      end
+    end
+  end
+  return M.get_current_level()
+end
+
 --- Return the list of stage ids that still need to be cleared for this level.
 --- Empty list means the level is done (all stages already passed).
 --- @param level_id number
@@ -659,15 +821,34 @@ function M.pending_stages(level_id)
   return pending
 end
 
+--- Return stages that are passed but still waiting on delayed validation.
+--- @param level_id number
+--- @return string[]
+function M.pending_validation_stages(level_id)
+  local lp = M.get_level_progress(level_id)
+  local pending = {}
+  for _, sd in ipairs(stage_defs) do
+    local sp = lp.stages[sd.id]
+    if sp and sp.passed and not sp.validated then
+      pending[#pending + 1] = sd.id
+    end
+  end
+  return pending
+end
+
 --- Pick the next stage to play for a level. Prefers pending stages (random
---- among them); falls back to a random already-passed stage if everything is
---- done, so replay still works.
+--- among them), then validation work, then falls back to a random stage if
+--- everything is already passed and validated.
 --- @param level_id number
 --- @return string|nil stage_id
 function M.pick_next_stage(level_id)
   local pending = M.pending_stages(level_id)
   if #pending > 0 then
     return pending[math.random(1, #pending)]
+  end
+  local validation_pending = M.pending_validation_stages(level_id)
+  if #validation_pending > 0 then
+    return validation_pending[math.random(1, #validation_pending)]
   end
   return stage_defs[math.random(1, #stage_defs)].id
 end
@@ -684,6 +865,20 @@ function M.generate_exercise(level_id, stage_id)
   return gen(level)
 end
 
+--- Return typing-session options for a given course stage.
+--- @param level_id number
+--- @param stage_id string
+--- @return table
+function M.get_stage_session_opts(level_id, stage_id)
+  local stage = M.get_stage(level_id, stage_id)
+  if not stage then
+    return { no_backspace = true }
+  end
+  return {
+    no_backspace = stage.no_backspace,
+  }
+end
+
 --- Look up a stage definition (gate values) on a level.
 --- @param level_id number
 --- @param stage_id string
@@ -692,6 +887,36 @@ function M.get_stage(level_id, stage_id)
   local level = M.get_level(level_id)
   if not level then return nil end
   return find_stage(level, stage_id)
+end
+
+--- @param level_id number
+--- @param stage_id string
+--- @param now_ts? number
+--- @return boolean
+function M.is_stage_validation_ready(level_id, stage_id, now_ts)
+  local sp = M.get_stage_progress(level_id, stage_id)
+  now_ts = now_ts or os.time()
+  return validation_ready(sp, now_ts)
+end
+
+--- @param level_id number
+--- @param stage_id string
+--- @param now_ts? number
+--- @return number|nil
+function M.get_stage_validation_due_at(level_id, stage_id, now_ts)
+  local sp = M.get_stage_progress(level_id, stage_id)
+  if not sp or not sp.first_pass_at then
+    return nil
+  end
+  now_ts = now_ts or os.time()
+  if validation_ready(sp, now_ts) then
+    return now_ts
+  end
+  return sp.first_pass_at + VALIDATION_DELAY_SECS
+end
+
+function M.get_validation_delay_secs()
+  return VALIDATION_DELAY_SECS
 end
 
 --- Reset all course progress.

@@ -216,6 +216,10 @@ function M.start_course_exercise(level_id, stage_id)
   end
 
   stage_id = stage_id or course.pick_next_stage(level_id)
+  local stage = course.get_stage(level_id, stage_id)
+  local session_opts = course.get_stage_session_opts(level_id, stage_id)
+  local stage_prog = course.get_stage_progress(level_id, stage_id)
+  local is_validation_rep = stage_prog and stage_prog.passed and not stage_prog.validated
 
   state.mode = "course"
   state.course_level = level_id
@@ -226,7 +230,10 @@ function M.start_course_exercise(level_id, stage_id)
   state_mod.reset_typing_session(state, text, {
     category_id = "course_" .. level_id .. "_" .. stage_id,
     exercise_idx = nil,
-    no_backspace = true,
+    generated_desc = is_validation_rep and "Validation rep - prove the stage after a delay"
+      or stage and (stage.course_mode == "guided" and "Guided rep - corrections allowed"
+        or (stage.course_mode == "mastery" and "Mastery rep - clean run required" or "Clean rep - no backspace")),
+    no_backspace = session_opts.no_backspace,
   })
 
   window.ensure_window(state, M.cleanup)
@@ -417,6 +424,58 @@ function M.start_transition_exercise(class_id)
   typing.update_display(ctx)
 end
 
+function M.start_transition_reinforcement(class_id, transitions)
+  state.mode = "freeplay"
+  state.screen = "exercise"
+
+  local transition_list = {}
+  for _, transition in ipairs(transitions or {}) do
+    transition_list[#transition_list + 1] = transition
+  end
+
+  local focus_name = nil
+  if class_id then
+    for _, item in ipairs(errs.get_transition_class_catalog()) do
+      if item.id == class_id then
+        focus_name = item.name
+        break
+      end
+    end
+  end
+  local desc = "Course reinforcement"
+  if focus_name then
+    desc = desc .. ": " .. focus_name
+  end
+  if #transition_list > 0 then
+    desc = desc .. " via " .. table.concat(vim.tbl_map(function(bg)
+      return "'" .. bg .. "'"
+    end, transition_list), ", ")
+  end
+
+  local text, generated_desc = errs.generate_transition_exercise({
+    class_id = class_id,
+    transitions = transition_list,
+    min_words = 12,
+    max_words = 18,
+    min_transition_hits = math.max(10, #transition_list * 4),
+    description_override = desc,
+  })
+  state_mod.reset_typing_session(state, text, {
+    category_id = "course_transition_reinforcement",
+    exercise_idx = nil,
+    no_backspace = false,
+    generated_desc = generated_desc,
+    transition_focus_class = class_id,
+    transition_focus_transitions = transition_list,
+  })
+
+  window.ensure_window(state, M.cleanup)
+  window.clear_buffer(state)
+  set_buffer_text(text)
+  typing.setup_keymaps(ctx)
+  typing.update_display(ctx)
+end
+
 function M.start_timed_session(minutes)
   state.mode = "timed"
   state.screen = "exercise"
@@ -503,6 +562,9 @@ ctx.actions = {
   end,
   start_transition_exercise = function(class_id)
     M.start_transition_exercise(class_id)
+  end,
+  start_transition_reinforcement = function(class_id, transitions)
+    M.start_transition_reinforcement(class_id, transitions)
   end,
   start_timed_session = function(minutes)
     M.start_timed_session(minutes)

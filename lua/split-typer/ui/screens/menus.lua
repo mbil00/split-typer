@@ -234,19 +234,42 @@ function M.show_menu(ctx)
 
   common.push_section_separator(lines, highlights, "Practice")
 
-  local current_level = ctx.course.get_current_level()
+  local current_level = ctx.course.get_focus_level()
   local level = ctx.course.get_level(current_level)
   local progress = ctx.course.get_level_progress(current_level)
   local stages_passed = 0
+  local stages_validated = 0
   for _, sd in ipairs(ctx.course.stage_defs) do
     local sp = progress.stages and progress.stages[sd.id]
     if sp and sp.passed then
       stages_passed = stages_passed + 1
     end
+    if sp and sp.validated then
+      stages_validated = stages_validated + 1
+    end
   end
-  local course_status = progress.passed and current_level == #ctx.course.levels
-      and "All levels complete!"
-      or string.format("Level %d: %s (%d/%d stages)", current_level, level.name, stages_passed, #ctx.course.stage_defs)
+  local course_status
+  if progress.validated and current_level == #ctx.course.levels then
+    course_status = "All levels validated!"
+  elseif progress.passed then
+    course_status = string.format(
+      "Level %d: %s (%d/%d validated)",
+      current_level,
+      level.name,
+      stages_validated,
+      #ctx.course.stage_defs
+    )
+  else
+    course_status = string.format(
+      "Level %d: %s (%d/%d passed, %d/%d validated)",
+      current_level,
+      level.name,
+      stages_passed,
+      #ctx.course.stage_defs,
+      stages_validated,
+      #ctx.course.stage_defs
+    )
+  end
   common.push_menu_entry(lines, highlights, "c", "Touch Typing Course", course_status)
 
   local targeted_desc = "(not enough data yet)"

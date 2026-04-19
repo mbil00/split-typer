@@ -2,6 +2,26 @@ local common = require("split-typer.ui.screens.common")
 
 local M = {}
 
+local function course_mode_label(stage)
+  if not stage then
+    return "Clean"
+  end
+  if stage.course_mode == "guided" then
+    return "Guided"
+  end
+  if stage.course_mode == "mastery" then
+    return "Mastery"
+  end
+  return "Clean"
+end
+
+local function format_timestamp(ts)
+  if not ts then
+    return "n/a"
+  end
+  return os.date("%Y-%m-%d %H:%M", ts)
+end
+
 function M.show_course(ctx)
   local state = ctx.state
   ctx.state_mod.stop_timer(state)
@@ -11,7 +31,7 @@ function M.show_course(ctx)
   ctx.window.clear_buffer(state)
 
   local levels = ctx.course.levels
-  local current = ctx.course.get_current_level()
+  local current = ctx.course.get_focus_level()
   local lines = {}
   local highlights = {}
 
@@ -53,33 +73,45 @@ function M.show_course(ctx)
 
     local stage_chunks = {}
     local passed_count = 0
+    local validated_count = 0
     for _, sd in ipairs(ctx.course.stage_defs) do
-      local sp = progress.stages[sd.id] or { completed = 0, passed = false }
+      local sp = progress.stages[sd.id] or { completed = 0, passed = false, validated = false }
       local reps = 2
+      local stage_mode = nil
       for _, s in ipairs(level.stages) do
         if s.id == sd.id then
           reps = s.reps_required
+          stage_mode = course_mode_label(s)
           break
         end
       end
       local done = math.min(sp.completed or 0, reps)
-      stage_chunks[#stage_chunks + 1] = string.format("%s:%d/%d", sd.short, done, reps)
+      local mode_mark = stage_mode == "Guided" and "*"
+        or (stage_mode == "Mastery" and "!" or "")
+      local validation_mark = sp.validated and "v" or (sp.passed and "+" or "")
+      stage_chunks[#stage_chunks + 1] = string.format("%s%s:%d/%d%s", sd.short, mode_mark, done, reps, validation_mark)
       if sp.passed then
         passed_count = passed_count + 1
+      end
+      if sp.validated then
+        validated_count = validated_count + 1
       end
     end
     local stage_summary = table.concat(stage_chunks, " ")
 
     local status, status_hl
-    if progress.passed then
+    if progress.validated then
       if progress.best_wpm > 0 then
-        status = string.format("PASSED  best %d WPM %.0f%%", progress.best_wpm, progress.best_accuracy)
+        status = string.format("VALIDATED  best %d WPM %.0f%%", progress.best_wpm, progress.best_accuracy)
       else
-        status = "PASSED"
+        status = "VALIDATED"
       end
       status_hl = "SplitTyperGood"
+    elseif progress.passed then
+      status = string.format("PASSED  validate %d/%d stages", validated_count, #ctx.course.stage_defs)
+      status_hl = "SplitTyperOk"
     elseif unlocked then
-      status = string.format("%s  (%d/%d stages)", stage_summary, passed_count, #ctx.course.stage_defs)
+      status = string.format("%s  (%d/%d passed, %d/%d validated)", stage_summary, passed_count, #ctx.course.stage_defs, validated_count, #ctx.course.stage_defs)
       status_hl = "SplitTyperOk"
     else
       status = "LOCKED"
@@ -110,7 +142,11 @@ function M.show_course(ctx)
   lines[#lines + 1] = ""
   lines[#lines + 1] = "  Each level runs 5 stage types; each must be cleared twice to pass."
   highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], "SplitTyperMenuDesc" }
-  lines[#lines + 1] = "  Pressing a level key auto-picks a not-yet-passed stage. Strict mode: no backspace."
+  lines[#lines + 1] = "  + = passed and waiting on delayed validation   v = validated mastery"
+  highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], "SplitTyperMenuDesc" }
+  lines[#lines + 1] = "  * = Guided rep (corrections allowed on levels 1-3)   ! = Mastery rep"
+  highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], "SplitTyperMenuDesc" }
+  lines[#lines + 1] = "  Pressing a level key auto-picks unfinished work first, then delayed validation reps."
   highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], "SplitTyperMenuDesc" }
   lines[#lines + 1] = ""
   local sep2 = string.rep("\u{2500}", 82)
@@ -148,7 +184,7 @@ function M.show_course_results(ctx)
   local stage_id = state.course_stage
   local level = ctx.course.get_level(level_id)
   local stage = ctx.course.get_stage(level_id, stage_id)
-  local passed_exercise, stage_cleared, level_complete = ctx.course.record_exercise(
+  local passed_exercise, stage_cleared, stage_validated, level_complete, level_validated = ctx.course.record_exercise(
     level_id,
     stage_id,
     stats.wpm,
@@ -157,19 +193,40 @@ function M.show_course_results(ctx)
     stats.errors
   )
   local level_prog = ctx.course.get_level_progress(level_id)
-  local stage_prog = level_prog.stages[stage_id] or { completed = 0, passed = false, best_wpm = 0, best_accuracy = 0 }
+  local stage_prog = level_prog.stages[stage_id] or {
+    completed = 0,
+    passed = false,
+    validated = false,
+    validation_runs = 0,
+    best_wpm = 0,
+    best_accuracy = 0,
+  }
 
   local lines = { "" }
   local highlights = {}
+  local mode_label = course_mode_label(stage)
+  local rep_label = mode_label == "Guided" and "GUIDED REP PASSED"
+    or (mode_label == "Mastery" and "MASTERY REP PASSED" or "CLEAN REP PASSED")
+  local typed_char_map = state.char_map
+  local session_transition_focus = nil
+  if #state.error_log > 0 then
+    session_transition_focus = ctx.errs.get_session_transition_focus(state.error_log, typed_char_map, state.pos)
+  end
 
-  if level_complete then
+  if level_validated then
+    lines[#lines + 1] = "       LEVEL VALIDATED!"
+    highlights[#highlights + 1] = { 1, 0, #lines[2], "SplitTyperGood" }
+  elseif level_complete then
     lines[#lines + 1] = "       LEVEL COMPLETE!"
+    highlights[#highlights + 1] = { 1, 0, #lines[2], "SplitTyperGood" }
+  elseif stage_validated then
+    lines[#lines + 1] = string.format("       STAGE VALIDATED: %s", stage.name)
     highlights[#highlights + 1] = { 1, 0, #lines[2], "SplitTyperGood" }
   elseif stage_cleared then
     lines[#lines + 1] = string.format("       STAGE CLEARED: %s", stage.name)
     highlights[#highlights + 1] = { 1, 0, #lines[2], "SplitTyperGood" }
   elseif passed_exercise then
-    lines[#lines + 1] = "       EXERCISE PASSED"
+    lines[#lines + 1] = "       " .. rep_label
     highlights[#highlights + 1] = { 1, 0, #lines[2], "SplitTyperOk" }
   else
     lines[#lines + 1] = "       NOT YET..."
@@ -178,6 +235,23 @@ function M.show_course_results(ctx)
 
   lines[#lines + 1] = string.format("       Level %d: %s  -  %s", level_id, level.name, stage.name)
   highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], "SplitTyperHeader" }
+  lines[#lines + 1] = string.format("       Course mode: %s", mode_label)
+  highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], mode_label == "Guided" and "SplitTyperOk" or "SplitTyperHeader" }
+  if stage_prog.passed and not stage_prog.validated then
+    local due_at = ctx.course.get_stage_validation_due_at(level_id, stage_id)
+    local validation_line
+    if ctx.course.is_stage_validation_ready(level_id, stage_id) then
+      validation_line = "       Validation: ready now - one more successful run will validate this stage"
+    else
+      validation_line = "       Validation: opens at " .. format_timestamp(due_at)
+    end
+    lines[#lines + 1] = validation_line
+    highlights[#highlights + 1] = { #lines - 1, 0, #validation_line, "SplitTyperMenuDesc" }
+  elseif stage_prog.validated then
+    local validation_line = "       Validated at: " .. format_timestamp(stage_prog.validated_at)
+    lines[#lines + 1] = validation_line
+    highlights[#highlights + 1] = { #lines - 1, 0, #validation_line, "SplitTyperMenuDesc" }
+  end
 
   if not passed_exercise then
     local reasons = {}
@@ -236,12 +310,40 @@ function M.show_course_results(ctx)
   )
   lines[#lines + 1] = req_line
   highlights[#highlights + 1] = { #lines - 1, 17, #req_line, "SplitTyperSep" }
+  local policy_line = string.format(
+    "    Policy:      %s",
+    mode_label == "Guided" and "corrections allowed while the key map is still settling"
+      or (mode_label == "Mastery" and "clean run required - no backspace"
+        or "clean run - no backspace")
+  )
+  lines[#lines + 1] = policy_line
+  highlights[#highlights + 1] = { #lines - 1, 17, #policy_line, "SplitTyperSep" }
 
   local stage_line = string.format("    %s:    %d/%d passes", stage.name, math.min(stage_prog.completed, stage.reps_required), stage.reps_required)
   lines[#lines + 1] = stage_line
   highlights[#highlights + 1] = { #lines - 1, 17, #stage_line, stage_prog.passed and "SplitTyperGood" or "SplitTyperOk" }
+  local validation_status
+  local validation_hl
+  if stage_prog.validated then
+    validation_status = string.format("    Validation: %d run(s), validated", stage_prog.validation_runs or 0)
+    validation_hl = "SplitTyperGood"
+  elseif stage_prog.passed then
+    local due_at = ctx.course.get_stage_validation_due_at(level_id, stage_id)
+    if ctx.course.is_stage_validation_ready(level_id, stage_id) then
+      validation_status = "    Validation: ready now - pass once more to validate"
+    else
+      validation_status = "    Validation: pending until " .. format_timestamp(due_at)
+    end
+    validation_hl = "SplitTyperOk"
+  else
+    validation_status = "    Validation: unlocks after the stage is passed"
+    validation_hl = "SplitTyperPending"
+  end
+  lines[#lines + 1] = validation_status
+  highlights[#highlights + 1] = { #lines - 1, 17, #validation_status, validation_hl }
 
   local pending = ctx.course.pending_stages(level_id)
+  local pending_validation = ctx.course.pending_validation_stages(level_id)
   local pending_names = {}
   for _, sid in ipairs(pending) do
     local s = ctx.course.get_stage(level_id, sid)
@@ -249,19 +351,53 @@ function M.show_course_results(ctx)
       pending_names[#pending_names + 1] = s.name
     end
   end
+  local pending_validation_names = {}
+  for _, sid in ipairs(pending_validation) do
+    local s = ctx.course.get_stage(level_id, sid)
+    if s then
+      pending_validation_names[#pending_validation_names + 1] = s.name
+    end
+  end
   local pending_line
   if #pending_names == 0 then
-    pending_line = "    Level:       all stages cleared"
+    pending_line = "    Level:       all stages passed"
   else
     pending_line = "    Level:       still to pass - " .. table.concat(pending_names, ", ")
   end
   lines[#lines + 1] = pending_line
   highlights[#highlights + 1] = { #lines - 1, 17, #pending_line, #pending_names == 0 and "SplitTyperGood" or "SplitTyperOk" }
+  local validation_line
+  if #pending_validation_names == 0 then
+    validation_line = "    Mastery:     all delayed validations done"
+  else
+    validation_line = "    Mastery:     still to validate - " .. table.concat(pending_validation_names, ", ")
+  end
+  lines[#lines + 1] = validation_line
+  highlights[#highlights + 1] = { #lines - 1, 17, #validation_line, #pending_validation_names == 0 and "SplitTyperGood" or "SplitTyperOk" }
 
   if stage_prog.best_wpm > 0 then
     local best_line = string.format("    Stage best:  %d WPM, %.0f%% accuracy", stage_prog.best_wpm, stage_prog.best_accuracy)
     lines[#lines + 1] = best_line
     highlights[#highlights + 1] = { #lines - 1, 17, #best_line, "SplitTyperScore" }
+  end
+
+  if not passed_exercise and session_transition_focus and session_transition_focus.class_id then
+    lines[#lines + 1] = ""
+    local reinforce_sep = string.rep("\u{2500}", 60)
+    lines[#lines + 1] = reinforce_sep
+    highlights[#highlights + 1] = { #lines - 1, 0, #reinforce_sep, "SplitTyperSep" }
+    lines[#lines + 1] = ""
+    local reinforce_line = string.format(
+      "    Reinforcement: %s via %s",
+      session_transition_focus.class_name,
+      table.concat(vim.tbl_map(function(bg)
+        return "'" .. bg .. "'"
+      end, session_transition_focus.transitions), ", ")
+    )
+    lines[#lines + 1] = reinforce_line
+    highlights[#highlights + 1] = { #lines - 1, 20, #reinforce_line, "SplitTyperOk" }
+    lines[#lines + 1] = "    [w] Run a short transition reinforcement drill from this failure pattern"
+    highlights[#highlights + 1] = { #lines - 1, 4, 7, "SplitTyperMenuKey" }
   end
 
   lines[#lines + 1] = ""
@@ -275,6 +411,8 @@ function M.show_course_results(ctx)
     next_label = "    [n] Start next level"
   elseif #pending > 0 then
     next_label = "    [n] Next exercise (auto-pick stage)"
+  elseif #pending_validation > 0 then
+    next_label = "    [n] Next validation rep"
   else
     next_label = "    [n] Replay a random stage"
   end
@@ -300,6 +438,14 @@ function M.show_course_results(ctx)
   ctx.window.map(state, "r", function()
     ctx.actions.start_course_exercise(level_id, stage_id)
   end)
+  if not passed_exercise and session_transition_focus and session_transition_focus.class_id then
+    ctx.window.map(state, "w", function()
+      ctx.actions.start_transition_reinforcement(
+        session_transition_focus.class_id,
+        session_transition_focus.transitions
+      )
+    end)
+  end
   ctx.window.map(state, "c", ctx.actions.show_course)
   ctx.window.map(state, "<Esc>", ctx.actions.show_course)
   ctx.window.map(state, "q", ctx.actions.cleanup)

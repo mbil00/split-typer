@@ -14,6 +14,7 @@ M.state = {
   target = nil,
   generated_desc = nil,
   transition_focus_class = nil,
+  transition_focus_transitions = nil,
   char_map = nil,
   target_line_count = 0,
   input = {},
@@ -117,6 +118,7 @@ local function reset_session_state(state)
   state.target = nil
   state.generated_desc = nil
   state.transition_focus_class = nil
+  state.transition_focus_transitions = nil
   state.char_map = nil
   state.target_line_count = 0
   state.input = {}
@@ -243,6 +245,7 @@ function M.reset_typing_session(state, text, opts)
   state.target = text
   state.generated_desc = opts.generated_desc
   state.transition_focus_class = opts.transition_focus_class
+  state.transition_focus_transitions = opts.transition_focus_transitions
   state.char_map = M.build_char_map(text)
   state.target_line_count = #vim.split(text, "\n")
   state.category_id = opts.category_id
