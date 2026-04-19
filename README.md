@@ -5,7 +5,7 @@ A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware dr
 ## Features
 
 - **Free-play drills organized into 4 groups** — General, Characters, Code & Prose, and Fingers — so the main menu stays readable
-- **12-level course** with progressive key introduction and five stage types per level (single-key, bigrams, focused words, integration, mastery); each stage has its own gate and must be cleared twice
+- **12-level course** with progressive key introduction, five core stage types per level (single-key, bigrams, focused words, integration, mastery), and short transfer checks added once enough letters are unlocked
 - **Layout-aware drills** — physical categories (home row, finger isolation, course levels, cross-center detection) adapt to QWERTY or Dvorak based on your config; content categories (code, prose, symbols) stay glyph-stable across layouts
 - **Weak key practice** that uses your saved error profile to bias drills toward your worst characters
 - **Weak transition practice** that targets your hardest letter-to-letter movements with warmups and adaptive word drills
@@ -108,17 +108,19 @@ Course, Weak Key, Weak Transition, and Timed sessions keep their own rules and i
 ### Course
 
 - 12 structured levels that introduce new keys gradually
-- Each level runs five stage types, each with its own pass gate:
+- Each level runs five core stage types, each with its own pass gate:
   - **Single Key** — isolated presses of the newly unlocked keys
   - **Bigrams** — pair drills mixing new keys against each other and prior keys
   - **Focused Words** — real words that lean heavily on the new keys
   - **Integration** — all unlocked keys, biased toward your weak spots
   - **Mastery** — a longer run with a tighter gate
+- Levels 4-12 also add a short **Transfer** stage with realistic prose, command, or code-like fragments when the unlocked character set can support them
 - Each stage must be cleared twice to pass; once cleared, it's still replayable but no longer required
 - Passed stages also need one delayed validation run after an 8-hour wait before they count as fully validated mastery
 - Pressing a level key auto-picks not-yet-passed work first, then delayed validation reps
 - WPM and accuracy floors rise with each level; the mastery stage always raises them further
 - Early `Single Key` and `Bigrams` reps on levels 1-3 allow corrections; later reps stay no-backspace
+- Early transfer checks also stay guided briefly before turning into clean reps
 - Failed course runs can offer a short transition-reinforcement drill based on the movement pattern that broke down in that session
 - Course screens label the current teaching phase (`Mapping`, `Stabilization`, `Transfer`, `Automaticity`, `Optimization`) and keep the coaching text to one short actionable recommendation
 

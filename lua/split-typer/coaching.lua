@@ -346,6 +346,9 @@ function M.get_course_phase(course, level_id, stage)
   if level_prog.validated and level_id >= #course.levels then
     return "Optimization"
   end
+  if stage and stage.id == "transfer" then
+    return "Transfer"
+  end
   if level_prog.passed and not level_prog.validated then
     return "Automaticity"
   end

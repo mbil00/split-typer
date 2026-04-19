@@ -5,13 +5,13 @@ local layouts = require("split-typer.layouts")
 
 local M = {}
 
-local PROGRESS_SCHEMA = 3
+local PROGRESS_SCHEMA = 4
 local VALIDATION_DELAY_SECS = 8 * 60 * 60
 
--- Stage definitions. Each level runs every stage; the stage's deltas/scale
--- modify the level's baseline gates. A stage is "passed" once it has been
--- cleared `reps_required` times; once passed, it's still re-playable but no
--- longer required to advance.
+-- Stage definitions. Early levels run the five core stages; later levels add
+-- a short transfer check once enough letters are unlocked. A stage is "passed"
+-- once it has been cleared `reps_required` times; once passed, it's still
+-- re-playable but no longer required to advance.
 local stage_defs = {
   {
     id = "single_key",
@@ -73,6 +73,20 @@ local stage_defs = {
     max_err_delta = -1,
     reps_required = 2,
     course_mode = "mastery",
+  },
+  {
+    id = "transfer",
+    name = "Transfer",
+    short = "TR",
+    description = "Short realistic text - prose, command, or code-like fragments",
+    wpm_scale = 0.85,
+    acc_delta = -1,
+    eff_delta = -1,
+    max_err_delta = 1,
+    reps_required = 1,
+    min_level = 4,
+    guided_until_level = 5,
+    early_wpm_relief = 2,
   },
 }
 
@@ -216,6 +230,26 @@ local function build_stage_gate(level, stage_def)
   }
 end
 
+local function stage_available_for_level(level_id, stage_def)
+  if stage_def.min_level and level_id < stage_def.min_level then
+    return false
+  end
+  if stage_def.max_level and level_id > stage_def.max_level then
+    return false
+  end
+  return true
+end
+
+local function stage_defs_for_level(level_id)
+  local defs = {}
+  for _, sd in ipairs(stage_defs) do
+    if stage_available_for_level(level_id, sd) then
+      defs[#defs + 1] = sd
+    end
+  end
+  return defs
+end
+
 local function materialize_level(template, prior_chars)
   local new_list = chars_from_positions(template.new_positions)
   if template.include_shifted_numbers and layouts.active then
@@ -245,7 +279,7 @@ local function materialize_level(template, prior_chars)
     include_extras = template.include_extras,
   }
   level.stages = {}
-  for _, sd in ipairs(stage_defs) do
+  for _, sd in ipairs(stage_defs_for_level(level.id)) do
     level.stages[#level.stages + 1] = build_stage_gate(level, sd)
   end
   return level
@@ -284,6 +318,24 @@ end
 
 local function char_at(str, i)
   return str:sub(i, i)
+end
+
+local function make_char_set(chars)
+  local set = {}
+  for i = 1, #chars do
+    set[chars:sub(i, i)] = true
+  end
+  return set
+end
+
+local function text_fits_level(text, allowed_set)
+  for i = 1, #text do
+    local ch = text:sub(i, i)
+    if ch ~= " " and ch ~= "\n" and not allowed_set[ch] then
+      return false
+    end
+  end
+  return true
 end
 
 local function gen_single_key(level)
@@ -466,12 +518,115 @@ local function gen_mastery(level)
   })
 end
 
+local transfer_templates = {
+  { min_level = 4, kind = "prose", text = "the task is clear and the data is shared" },
+  { min_level = 4, kind = "prose", text = "we read the same file and share the result" },
+  { min_level = 4, kind = "prose", text = "a small change can alter the state and the path" },
+  { min_level = 5, kind = "prose", text = "the team can learn the pattern and retain the skill" },
+  { min_level = 5, kind = "prose", text = "real text should start early so the lesson can transfer" },
+  { min_level = 6, kind = "prose", text = "steady practice makes the movement simpler and more stable" },
+  { min_level = 7, kind = "prose", text = "the current level should feel calm before the next one starts" },
+  { min_level = 7, kind = "command", text = "cd src\nls tests" },
+  { min_level = 7, kind = "command", text = "git status\ngit add data" },
+  { min_level = 8, kind = "command", text = "grep state data\nsort data" },
+  { min_level = 8, kind = "command", text = "cat notes.txt\nrm stale.tmp" },
+  { min_level = 9, kind = "command", text = "./start.sh\n./run test" },
+  { min_level = 9, kind = "code", text = "if state then\n  return data\nend" },
+  { min_level = 10, kind = "code", text = "local path = \"data.txt\"\nprint(path)" },
+  { min_level = 10, kind = "code", text = "for item in list do\n  print(item)\nend" },
+  { min_level = 11, kind = "command", text = "curl 127.0.0.1:8080\nping 10.0.0.1" },
+  { min_level = 11, kind = "code", text = "port = 8080\nretry = 3" },
+  { min_level = 12, kind = "code", text = "if (ok) { return data[i]; }" },
+  { min_level = 12, kind = "code", text = "map[key] = value;\nlist.push(item);" },
+  { min_level = 12, kind = "code", text = "fn parse(input: &str) -> bool { input != \"\" }" },
+}
+
+local function transfer_template_pool(level)
+  local allowed = make_char_set(level.all_chars)
+  local matches = {
+    prose = {},
+    command = {},
+    code = {},
+  }
+
+  for _, item in ipairs(transfer_templates) do
+    if level.id >= item.min_level and text_fits_level(item.text, allowed) then
+      matches[item.kind][#matches[item.kind] + 1] = item.text
+    end
+  end
+
+  return matches
+end
+
+local function generate_transfer_fallback(level)
+  return words.generate({
+    chars = level.all_chars,
+    focus_chars = level.new_chars,
+    min_focus_occurrences = math.max(6, #focus_seed(level) * 2),
+    min_words = math.max(7, level.words_range[1] - 1),
+    max_words = math.max(10, level.words_range[1] + 2),
+  })
+end
+
+local function gen_transfer(level)
+  local pools = transfer_template_pool(level)
+  local prose = pools.prose
+  local command = pools.command
+  local code = pools.code
+  local picks = {}
+
+  if level.id <= 6 then
+    if #prose > 0 then
+      picks[#picks + 1] = prose[math.random(1, #prose)]
+    end
+  elseif level.id <= 9 then
+    if #prose > 0 then
+      picks[#picks + 1] = prose[math.random(1, #prose)]
+    end
+    if #command > 0 then
+      picks[#picks + 1] = command[math.random(1, #command)]
+    end
+  else
+    local mixed = {}
+    for _, item in ipairs(command) do
+      mixed[#mixed + 1] = item
+    end
+    for _, item in ipairs(code) do
+      mixed[#mixed + 1] = item
+    end
+    if #mixed > 0 then
+      picks[#picks + 1] = mixed[math.random(1, #mixed)]
+    end
+    if #prose > 0 and math.random() < 0.6 then
+      picks[#picks + 1] = prose[math.random(1, #prose)]
+    end
+  end
+
+  if #picks == 0 then
+    return generate_transfer_fallback(level)
+  end
+
+  if #picks == 1 and picks[1]:find("\n", 1, true) then
+    return picks[1]
+  end
+
+  if #picks == 1 and level.id >= 8 and #prose > 1 and math.random() < 0.5 then
+    local extra = prose[math.random(1, #prose)]
+    if extra ~= picks[1] then
+      picks[#picks + 1] = extra
+    end
+  end
+
+  return table.concat(picks, "\n")
+end
+
 local stage_generators = {
   single_key = gen_single_key,
   bigrams = gen_bigrams,
   focused = gen_focused,
   integration = gen_integration,
   mastery = gen_mastery,
+  transfer = gen_transfer,
 }
 
 -- ============================================================
@@ -559,6 +714,21 @@ local function upgrade_progress(loaded)
               end
               new_sp.best_wpm = old_sp.best_wpm or 0
               new_sp.best_accuracy = old_sp.best_accuracy or 0
+              new_lp.stages[sd.id] = new_sp
+            elseif loaded.schema_version < 4 and sd.id == "transfer"
+              and stage_available_for_level(tonumber(level_key), sd)
+              and old_lp.passed
+            then
+              local new_sp = blank_stage_progress()
+              new_sp.completed = sd.reps_required
+              new_sp.passed = true
+              new_sp.first_pass_at = (old_lp.validated_at or os.time()) - VALIDATION_DELAY_SECS
+              new_sp.last_pass_at = old_lp.validated_at or os.time()
+              if old_lp.validated then
+                new_sp.validated = true
+                new_sp.validation_runs = 1
+                new_sp.validated_at = old_lp.validated_at
+              end
               new_lp.stages[sd.id] = new_sp
             end
           end
@@ -655,8 +825,8 @@ local function find_stage(level, stage_id)
   return nil
 end
 
-local function all_stages_passed(lp)
-  for _, sd in ipairs(stage_defs) do
+local function all_stages_passed(level_id, lp)
+  for _, sd in ipairs(stage_defs_for_level(level_id)) do
     local sp = lp.stages[sd.id]
     if not sp or not sp.passed then
       return false
@@ -665,8 +835,8 @@ local function all_stages_passed(lp)
   return true
 end
 
-local function all_stages_validated(lp)
-  for _, sd in ipairs(stage_defs) do
+local function all_stages_validated(level_id, lp)
+  for _, sd in ipairs(stage_defs_for_level(level_id)) do
     local sp = lp.stages[sd.id]
     if not sp or not sp.validated then
       return false
@@ -736,7 +906,7 @@ function M.record_exercise(level_id, stage_id, wpm, accuracy, efficiency, errors
   end
 
   local level_complete = false
-  if not lp.passed and all_stages_passed(lp) then
+  if not lp.passed and all_stages_passed(level_id, lp) then
     lp.passed = true
     level_complete = true
     local prog = M.load_progress()
@@ -746,7 +916,7 @@ function M.record_exercise(level_id, stage_id, wpm, accuracy, efficiency, errors
   end
 
   local level_validated = false
-  if not lp.validated and all_stages_validated(lp) then
+  if not lp.validated and all_stages_validated(level_id, lp) then
     lp.validated = true
     lp.validated_at = os.time()
     level_validated = true
@@ -812,7 +982,7 @@ end
 function M.pending_stages(level_id)
   local lp = M.get_level_progress(level_id)
   local pending = {}
-  for _, sd in ipairs(stage_defs) do
+  for _, sd in ipairs(stage_defs_for_level(level_id)) do
     local sp = lp.stages[sd.id]
     if not sp or not sp.passed then
       pending[#pending + 1] = sd.id
@@ -827,7 +997,7 @@ end
 function M.pending_validation_stages(level_id)
   local lp = M.get_level_progress(level_id)
   local pending = {}
-  for _, sd in ipairs(stage_defs) do
+  for _, sd in ipairs(stage_defs_for_level(level_id)) do
     local sp = lp.stages[sd.id]
     if sp and sp.passed and not sp.validated then
       pending[#pending + 1] = sd.id
@@ -850,7 +1020,8 @@ function M.pick_next_stage(level_id)
   if #validation_pending > 0 then
     return validation_pending[math.random(1, #validation_pending)]
   end
-  return stage_defs[math.random(1, #stage_defs)].id
+  local active = stage_defs_for_level(level_id)
+  return active[math.random(1, #active)].id
 end
 
 --- Generate an exercise for a specific stage of a level.
@@ -877,6 +1048,13 @@ function M.get_stage_session_opts(level_id, stage_id)
   return {
     no_backspace = stage.no_backspace,
   }
+end
+
+--- Return the active stage definitions for a level.
+--- @param level_id number
+--- @return table[]
+function M.get_stage_defs(level_id)
+  return stage_defs_for_level(level_id)
 end
 
 --- Look up a stage definition (gate values) on a level.

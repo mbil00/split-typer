@@ -256,8 +256,11 @@ function M.start_course_exercise(level_id, stage_id)
     category_id = "course_" .. level_id .. "_" .. stage_id,
     exercise_idx = nil,
     generated_desc = is_validation_rep and "Validation rep - prove the stage after a delay"
-      or stage and (stage.course_mode == "guided" and "Guided rep - corrections allowed"
-        or (stage.course_mode == "mastery" and "Mastery rep - clean run required" or "Clean rep - no backspace")),
+      or stage and (stage.id == "transfer" and (stage.course_mode == "guided"
+          and "Transfer rep - short real-text exposure, corrections allowed"
+        or "Transfer check - short real-text rep")
+        or (stage.course_mode == "guided" and "Guided rep - corrections allowed"
+          or (stage.course_mode == "mastery" and "Mastery rep - clean run required" or "Clean rep - no backspace"))),
     no_backspace = session_opts.no_backspace,
   })
 

@@ -313,9 +313,10 @@ function M.show_menu(ctx)
   local current_level = ctx.course.get_focus_level()
   local level = ctx.course.get_level(current_level)
   local progress = ctx.course.get_level_progress(current_level)
+  local active_stage_defs = ctx.course.get_stage_defs(current_level)
   local stages_passed = 0
   local stages_validated = 0
-  for _, sd in ipairs(ctx.course.stage_defs) do
+  for _, sd in ipairs(active_stage_defs) do
     local sp = progress.stages and progress.stages[sd.id]
     if sp and sp.passed then
       stages_passed = stages_passed + 1
@@ -335,7 +336,7 @@ function M.show_menu(ctx)
       current_level,
       level.name,
       stages_validated,
-      #ctx.course.stage_defs
+      #active_stage_defs
     )
   else
     course_status = string.format(
@@ -344,9 +345,9 @@ function M.show_menu(ctx)
       current_level,
       level.name,
       stages_passed,
-      #ctx.course.stage_defs,
+      #active_stage_defs,
       stages_validated,
-      #ctx.course.stage_defs
+      #active_stage_defs
     )
   end
   common.push_menu_entry(lines, highlights, "c", "Touch Typing Course", course_status)

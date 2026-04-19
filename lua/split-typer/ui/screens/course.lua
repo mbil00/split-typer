@@ -66,6 +66,7 @@ function M.show_course(ctx)
   for _, level in ipairs(levels) do
     local progress = ctx.course.get_level_progress(level.id)
     local unlocked = ctx.course.is_unlocked(level.id)
+    local active_stage_defs = ctx.course.get_stage_defs(level.id)
     local key
     if level.id < 10 then
       key = tostring(level.id)
@@ -80,7 +81,7 @@ function M.show_course(ctx)
     local stage_chunks = {}
     local passed_count = 0
     local validated_count = 0
-    for _, sd in ipairs(ctx.course.stage_defs) do
+    for _, sd in ipairs(active_stage_defs) do
       local sp = progress.stages[sd.id] or { completed = 0, passed = false, validated = false }
       local reps = 2
       local stage_mode = nil
@@ -114,10 +115,10 @@ function M.show_course(ctx)
       end
       status_hl = "SplitTyperGood"
     elseif progress.passed then
-      status = string.format("PASSED  validate %d/%d stages", validated_count, #ctx.course.stage_defs)
+      status = string.format("PASSED  validate %d/%d stages", validated_count, #active_stage_defs)
       status_hl = "SplitTyperOk"
     elseif unlocked then
-      status = string.format("%s  (%d/%d passed, %d/%d validated)", stage_summary, passed_count, #ctx.course.stage_defs, validated_count, #ctx.course.stage_defs)
+      status = string.format("%s  (%d/%d passed, %d/%d validated)", stage_summary, passed_count, #active_stage_defs, validated_count, #active_stage_defs)
       status_hl = "SplitTyperOk"
     else
       status = "LOCKED"
@@ -146,11 +147,11 @@ function M.show_course(ctx)
   end
 
   lines[#lines + 1] = ""
-  lines[#lines + 1] = "  Each level runs 5 stage types; each must be cleared twice to pass."
+  lines[#lines + 1] = "  Each level runs 5 core stage types; levels 4-12 also add a short transfer check."
   highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], "SplitTyperMenuDesc" }
   lines[#lines + 1] = "  + = passed and waiting on delayed validation   v = validated mastery"
   highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], "SplitTyperMenuDesc" }
-  lines[#lines + 1] = "  * = Guided rep (corrections allowed on levels 1-3)   ! = Mastery rep"
+  lines[#lines + 1] = "  * = Guided rep (corrections allowed on early mapping/transfer levels)   ! = Mastery rep"
   highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], "SplitTyperMenuDesc" }
   lines[#lines + 1] = "  Pressing a level key auto-picks unfinished work first, then delayed validation reps."
   highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], "SplitTyperMenuDesc" }
@@ -211,8 +212,10 @@ function M.show_course_results(ctx)
   local lines = { "" }
   local highlights = {}
   local mode_label = course_mode_label(stage)
-  local rep_label = mode_label == "Guided" and "GUIDED REP PASSED"
+  local rep_label = stage.id == "transfer" and "TRANSFER CHECK PASSED"
+    or (mode_label == "Guided" and "GUIDED REP PASSED"
     or (mode_label == "Mastery" and "MASTERY REP PASSED" or "CLEAN REP PASSED")
+    )
   local typed_char_map = state.char_map
   local session_transition_focus = nil
   if #state.error_log > 0 then
@@ -334,9 +337,12 @@ function M.show_course_results(ctx)
   highlights[#highlights + 1] = { #lines - 1, 17, #req_line, "SplitTyperSep" }
   local policy_line = string.format(
     "    Policy:      %s",
-    mode_label == "Guided" and "corrections allowed while the key map is still settling"
-      or (mode_label == "Mastery" and "clean run required - no backspace"
-        or "clean run - no backspace")
+    stage.id == "transfer" and (mode_label == "Guided"
+        and "short real-text exposure; corrections allowed while transfer is new"
+      or "short real-text transfer check - no backspace")
+      or (mode_label == "Guided" and "corrections allowed while the key map is still settling"
+        or (mode_label == "Mastery" and "clean run required - no backspace"
+          or "clean run - no backspace"))
   )
   lines[#lines + 1] = policy_line
   highlights[#highlights + 1] = { #lines - 1, 17, #policy_line, "SplitTyperSep" }
@@ -366,6 +372,7 @@ function M.show_course_results(ctx)
 
   local pending = ctx.course.pending_stages(level_id)
   local pending_validation = ctx.course.pending_validation_stages(level_id)
+  local active_stage_defs = ctx.course.get_stage_defs(level_id)
   local pending_names = {}
   for _, sid in ipairs(pending) do
     local s = ctx.course.get_stage(level_id, sid)
@@ -396,6 +403,9 @@ function M.show_course_results(ctx)
   end
   lines[#lines + 1] = validation_line
   highlights[#highlights + 1] = { #lines - 1, 17, #validation_line, #pending_validation_names == 0 and "SplitTyperGood" or "SplitTyperOk" }
+  local stage_count_line = string.format("    Stage set:   %d active stages on this level", #active_stage_defs)
+  lines[#lines + 1] = stage_count_line
+  highlights[#highlights + 1] = { #lines - 1, 17, #stage_count_line, "SplitTyperMenuDesc" }
 
   if stage_prog.best_wpm > 0 then
     local best_line = string.format("    Stage best:  %d WPM, %.0f%% accuracy", stage_prog.best_wpm, stage_prog.best_accuracy)
