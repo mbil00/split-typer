@@ -103,6 +103,19 @@ ORDER BY order_count DESC;]],
       "shift split center same finger rhythm repeat clean reach return steady pace",
     },
   },
+  {
+    id = "benchmark_covered_90s",
+    key = "6",
+    name = "Covered 90s",
+    description = "Self-declared covered-key prose benchmark",
+    duration = 90,
+    profile = "prose",
+    generated_desc = "Benchmark - cover the keys and keep your eyes on the screen",
+    chunks = {
+      "When the keyboard drops out of attention, typing becomes part of thinking instead of a separate task. The point of covered key practice is not heroics. The point is to notice whether the map is stable enough that your eyes can stay with the work.",
+      "A covered benchmark should feel honest rather than fast. If the hands drift, slow down and keep the reach small. The score is useful only when it reflects what you can actually sustain without peeking.",
+    },
+  },
 }
 
 local function get_history_file()

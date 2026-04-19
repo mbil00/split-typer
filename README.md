@@ -4,7 +4,7 @@ A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware dr
 
 ## Features
 
-- **Free-play drills organized into 4 groups** — General, Characters, Code & Prose, and Fingers — so the main menu stays readable
+- **Free-play drills organized into 5 built-in groups** — General, Characters, Code & Prose, Fingers, and Advanced Tracks — so the main menu stays readable
 - **12-level course** with progressive key introduction, five core stage types per level (single-key, bigrams, focused words, integration, mastery), and short transfer checks added once enough letters are unlocked
 - **Layout-aware drills** — physical categories (home row, finger isolation, course levels, cross-center detection) adapt to QWERTY or Dvorak based on your config; content categories (code, prose, symbols) stay glyph-stable across layouts
 - **Weak key practice** that uses your saved error profile to bias drills toward your worst characters
@@ -79,7 +79,8 @@ The command supports completion for built-in entry points, group ids, and catego
 - `[2]` Characters submenu
 - `[3]` Code & Prose submenu
 - `[4]` Fingers submenu
-- `[5]` Custom Words submenu (shown only when configured)
+- `[5]` Advanced Tracks submenu
+- `[6]` Custom Words submenu (shown only when configured)
 - `[.]` Cycle strictness (Normal / Precision / Accuracy)
 - `[q]` Quit
 
@@ -91,6 +92,7 @@ Submenus show a short list of the categories in that group; hit a key to launch,
 - **Characters**: numbers, isolated brackets, bracket context, isolated symbols, symbol context
 - **Code & Prose**: Python, JavaScript, Rust/Go/C, shell & config, prose paragraphs, ultimate challenge
 - **Fingers**: 8 per-column drills plus thumbs and finger-combination work
+- **Advanced Tracks**: prose fluency, code punctuation, shell/CLI, delimiters, numbers/timestamps, split reaches, and thumb-cluster flow
 - **Custom Words**: drills drawn exclusively from your configured list (hidden until configured)
 
 ## Modes
@@ -149,6 +151,7 @@ Course, Weak Key, Weak Transition, and Timed sessions keep their own rules and i
 ### Benchmarks
 
 - Stable fixed-text checks for prose, code, and transition-heavy typing
+- Includes a self-declared covered-key benchmark for eyes-off baseline checks
 - Saved separately from normal practice history so your baselines stay clean
 - The first attempt becomes your baseline; later attempts track latest and best performance
 
@@ -177,6 +180,7 @@ Course, Weak Key, Weak Transition, and Timed sessions keep their own rules and i
 
 - Result screens support quick follow-up actions such as next exercise, retry, timed menu, main menu, and stats dashboard
 - Result screens add a short phase/coaching block so you do not have to infer the next practice move from raw numbers alone
+- Result screens and the dashboard also surface hesitation/pause burden so broken rhythm is visible, not hidden behind WPM
 - Session mistakes are summarized by problem keys and common substitutions
 - The stats dashboard shows long-term trends, best scores by category, weakest keys, hardest transitions, activity, and practice streaks
 - The dashboard also highlights difficult transition chains so you can spot repeated movement failures, not just single-key misses

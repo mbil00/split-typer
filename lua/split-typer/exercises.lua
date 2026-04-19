@@ -51,6 +51,7 @@ M.groups = {
   { id = "characters", name = "Characters", description = "Numbers, brackets, symbols" },
   { id = "code_prose", name = "Code & Prose", description = "Code languages, prose paragraphs, mixed challenge" },
   { id = "fingers", name = "Fingers", description = "Per-column isolation, thumbs, finger combinations" },
+  { id = "advanced", name = "Advanced Tracks", description = "Task-specific prose, shell, symbol, and split-keyboard fluency" },
   { id = "custom", name = "Custom Words", description = "Drills drawn from your configured word list" },
 }
 
@@ -518,6 +519,115 @@ Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$]],
       "the quick brown fox jumps over the lazy dog again",
       "asdf jkl; fdsa ;lkj asdf jkl; fdsa ;lkj qwer",
       "left right left right both hands alternate now go",
+    },
+  },
+  {
+    id = "advanced_prose_fluency",
+    name = "Track: Prose Fluency",
+    group = "advanced",
+    description = "Longer clauses, punctuation, and sentence rhythm without code syntax",
+    exercises = {
+      "Good prose typing is not only about speed. It is about moving through full sentences without dropping rhythm when commas, quotes, or longer phrases appear in the line.",
+      "A useful prose drill keeps the eyes on meaning while the hands handle spacing and punctuation. The hands should not panic every time a sentence changes shape.",
+      "Sustained text exposes hidden weakness better than short bursts do. A rough transition, a lazy reach, or a pause before punctuation becomes obvious when the paragraph keeps flowing.",
+      "The right pace for fluency work is calm enough to stay clean and fast enough to feel continuous. If the sentence breaks your rhythm, the answer is usually control, not force.",
+      "Real transfer appears when the keyboard stops interrupting thought. The line should feel like language first and finger work second, even when the punctuation gets denser.",
+    },
+  },
+  {
+    id = "advanced_code_punctuation",
+    name = "Track: Code Punctuation",
+    group = "advanced",
+    description = "Operators, delimiters, and assignment patterns in realistic code snippets",
+    exercises = {
+      [[const next = items.map((item) => ({ id: item.id, ok: item.score >= 90 }));
+if (!next.length) return { ok: false, reason: "empty" };]],
+      [[result := map[string]int{"ok": 1, "retry": 3}
+if count, exists := result["retry"]; exists && count > 0 { fmt.Println(count) }]],
+      [[let value = cache.get(key).and_then(|raw| raw.parse::<i32>().ok()).unwrap_or(0);
+if value >= 10 && value % 2 == 0 { println!("ready: {}", value); }]],
+      [[payload = {"path": "/tmp/out.log", "args": ["--strict", "--retry=2"], "debug": True}
+if payload["debug"] and payload["path"].endswith(".log"): print(payload)]],
+      [[type Config = { host: string; port?: number; flags: string[] };
+const cfg: Config = { host: "127.0.0.1", port: 8080, flags: ["--watch", "--strict"] };]],
+    },
+  },
+  {
+    id = "advanced_shell_cli",
+    name = "Track: Shell & CLI",
+    group = "advanced",
+    description = "Pipelines, flags, paths, redirects, and command-line punctuation in context",
+    exercises = {
+      [[rg -n "TODO|FIXME" src/ | sort | uniq -c | sort -rn | head -20]],
+      [[find . -type f -name "*.log" -mtime +7 -print0 | xargs -0 gzip -9]],
+      [[curl -sS http://127.0.0.1:8080/health | jq '.status,.uptime' > /tmp/health.json]],
+      [[tar czf backup_$(date +%Y%m%d_%H%M).tar.gz --exclude node_modules --exclude .git .]],
+      [[PATH="$HOME/.local/bin:$PATH" APP_ENV=prod ./run --host 0.0.0.0 --port 8080 2>&1 | tee out.log]],
+    },
+  },
+  {
+    id = "advanced_delimiters",
+    name = "Track: Brackets & Delimiters",
+    group = "advanced",
+    description = "Nested pairs, quotes, signatures, and data-shape punctuation without raw symbol walls",
+    exercises = {
+      [[fn render(map: HashMap<String, Vec<(usize, bool)>>) -> Result<(), Error> { Ok(()) }]],
+      [[items.push({ key: "theme", value: ["dark", "wide"], meta: { ok: true } });]],
+      [[if (user?.profile?.email ?? "").includes("@")) { queue.push(["mail", user.id]); }]],
+      [[query = {"select": ["name", "count(*)"], "where": {"status": ["new", "open"]}}]],
+      [[set statusline=%f\ %h%m%r%=%-14.(%l,%c%V%)\ %P]],
+    },
+  },
+  {
+    id = "advanced_numbers_timestamps",
+    name = "Track: Numbers & Timestamps",
+    group = "advanced",
+    description = "Dates, versions, ports, ratios, and mixed number punctuation in useful formats",
+    exercises = {
+      "2026-04-19 14:32:08 +0200 | 2026-11-03 08:05:44 +0100 | 2027-01-01 00:00:00 +0000",
+      "v1.9.4 -> v2.0.0-rc.3 -> v2.1.12 | api/v3 | build-20260419.7",
+      "127.0.0.1:8080 -> 10.0.0.12:443 | 192.168.1.50:22 | [::1]:3000",
+      "latency p50=18.4ms p95=42.8ms p99=105.2ms | error_rate=0.07% | cpu=63.5%",
+      "1/8 3/16 5/32 12:45 09:07 23:59 00:15 4x 8x 16x 32x",
+    },
+  },
+  {
+    id = "advanced_split_reaches",
+    name = "Track: Split Reaches",
+    group = "advanced",
+    description = "Cross-center reaches, inward index work, and symbol entry around the split boundary",
+    exercises = {
+      "tg yn tg yn  tg->yn  yn=>tg  target syntax  tidy entry  center reach return",
+      [[type SyncTarget = { tag: string; key: string };
+let next = target_map.get(tag)?.try_into().ok();]],
+      [[git tag -a v2.1.0 -m "sync target ready" && git push --tags]],
+      [[entry = { "type": "sync", "target": "engine", "ok": true, "retries": 2 }]],
+      "inner index reach, center return, split rhythm, steady space, short line, clean repeat",
+    },
+  },
+  {
+    id = "advanced_thumb_cluster",
+    name = "Track: Thumb Cluster Flow",
+    group = "advanced",
+    description = "Space, Enter, and line-break rhythm for terminals and multi-line editing",
+    exercises = {
+      [[git status
+git add README.md
+git commit -m "tighten shell flow"]],
+      [[if state.ok then
+  print("ready")
+end]],
+      [[one line here
+next line there
+third line stays clean]],
+      [[run test
+run lint
+run build
+ship clean]],
+      [[path one
+path two
+path three
+done now]],
     },
   },
   {

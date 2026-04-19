@@ -1,4 +1,5 @@
 local M = {}
+local HESITATION_THRESHOLD_MS = 1200
 
 M.state = {
   buf = nil,
@@ -290,6 +291,10 @@ function M.get_stats(state)
       efficiency = 100,
       backspaces_per_100_chars = 0,
       uncorrected_errors_per_100_chars = 0,
+      hesitation_count = 0,
+      hesitations_per_100_chars = 0,
+      avg_hesitation_ms = 0,
+      longest_hesitation_ms = 0,
       time = 0,
       score = 0,
       errors = 0,
@@ -304,6 +309,26 @@ function M.get_stats(state)
     }
   end
 
+  local hesitation_count = 0
+  local hesitation_total_ms = 0
+  local longest_hesitation_ms = 0
+  if state.key_events and #state.key_events > 1 then
+    local prev_t = nil
+    for _, event in ipairs(state.key_events) do
+      if prev_t then
+        local gap_ms = (event.t - prev_t) / 1e6
+        if gap_ms >= HESITATION_THRESHOLD_MS then
+          hesitation_count = hesitation_count + 1
+          hesitation_total_ms = hesitation_total_ms + gap_ms
+          if gap_ms > longest_hesitation_ms then
+            longest_hesitation_ms = gap_ms
+          end
+        end
+      end
+      prev_t = event.t
+    end
+  end
+
   local end_t = state.end_time or vim.uv.hrtime()
   local elapsed = (end_t - state.start_time) / 1e9
   local correct = state.correct_count
@@ -313,6 +338,8 @@ function M.get_stats(state)
   local typed_chars = state.pos
   local backspaces_per_100_chars = typed_chars > 0 and (state.backspace_count / typed_chars * 100) or 0
   local uncorrected_errors_per_100_chars = typed_chars > 0 and (state.error_count / typed_chars * 100) or 0
+  local hesitations_per_100_chars = typed_chars > 0 and (hesitation_count / typed_chars * 100) or 0
+  local avg_hesitation_ms = hesitation_count > 0 and (hesitation_total_ms / hesitation_count) or 0
   local gross_wpm = elapsed > 0 and ((state.pos / 5) / (elapsed / 60)) or 0
   local wpm = elapsed > 0 and ((correct / 5) / (elapsed / 60)) or 0
   local score = math.floor(wpm * (accuracy / 100) * (efficiency / 100))
@@ -330,6 +357,10 @@ function M.get_stats(state)
     efficiency = math.floor(efficiency * 10) / 10,
     backspaces_per_100_chars = math.floor(backspaces_per_100_chars * 10) / 10,
     uncorrected_errors_per_100_chars = math.floor(uncorrected_errors_per_100_chars * 10) / 10,
+    hesitation_count = hesitation_count,
+    hesitations_per_100_chars = math.floor(hesitations_per_100_chars * 10) / 10,
+    avg_hesitation_ms = math.floor(avg_hesitation_ms + 0.5),
+    longest_hesitation_ms = math.floor(longest_hesitation_ms + 0.5),
     time = elapsed,
     score = score,
     errors = state.error_count,

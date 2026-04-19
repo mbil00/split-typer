@@ -157,9 +157,28 @@ local function save_stats()
   end
 
   local timed_postmortem = build_timed_postmortem(typed_char_map)
+  local course_meta = nil
+  if state.mode == "course" and state.course_level and state.course_stage then
+    local stage = course.get_stage(state.course_level, state.course_stage)
+    local stage_prog = course.get_stage_progress(state.course_level, state.course_stage)
+    if stage then
+      local validation_status = "learning"
+      if stage_prog and stage_prog.validated then
+        validation_status = "validated"
+      elseif stage_prog and stage_prog.passed then
+        validation_status = course.is_stage_validation_ready(state.course_level, state.course_stage) and "ready" or "pending"
+      end
+      course_meta = {
+        course_level = state.course_level,
+        course_stage = state.course_stage,
+        course_mode = stage.course_mode,
+        course_validation_status = validation_status,
+      }
+    end
+  end
 
   local entry = {
-    schema_version = 2,
+    schema_version = 3,
     date = os.date("%Y-%m-%d %H:%M:%S"),
     category = state.category_id,
     wpm = stats.wpm,
@@ -170,6 +189,10 @@ local function save_stats()
     efficiency = stats.efficiency,
     backspaces_per_100_chars = stats.backspaces_per_100_chars,
     uncorrected_errors_per_100_chars = stats.uncorrected_errors_per_100_chars,
+    hesitation_count = stats.hesitation_count,
+    hesitations_per_100_chars = stats.hesitations_per_100_chars,
+    avg_hesitation_ms = stats.avg_hesitation_ms,
+    longest_hesitation_ms = stats.longest_hesitation_ms,
     score = stats.score,
     errors = stats.errors,
     backspaces = stats.backspaces,
@@ -178,6 +201,11 @@ local function save_stats()
     timed = state.timed_mode or nil,
     timed_postmortem = timed_postmortem,
   }
+  if course_meta then
+    for key, value in pairs(course_meta) do
+      entry[key] = value
+    end
+  end
 
   if state.benchmark_id then
     local def = benchmarks.get_definition(state.benchmark_id)
@@ -431,7 +459,7 @@ function M.start_benchmark(benchmark_id)
     timed_mode = true,
     timed_duration = def.duration,
     chunk_generator = chunk_generator,
-    generated_desc = "Benchmark - stable fixed text",
+    generated_desc = def.generated_desc or "Benchmark - stable fixed text",
   })
 
   window.ensure_window(state, M.cleanup)
