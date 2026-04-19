@@ -50,6 +50,90 @@ local function history_backspaces_per_100(item)
   return 0
 end
 
+local function history_category_profile(category_id)
+  if not category_id or #category_id == 0 then
+    return "other"
+  end
+
+  if category_id == "prose" then
+    return "prose"
+  end
+
+  if category_id:match("^code_") or category_id == "mixed" then
+    return "code"
+  end
+
+  if category_id:match("^course_")
+    or category_id == "targeted_practice"
+    or category_id == "transition_practice"
+    or category_id == "course_transition_reinforcement"
+  then
+    return "drill"
+  end
+
+  local exercises = require("split-typer.exercises")
+  local cat = exercises.get_category(category_id)
+  if cat then
+    if cat.group == "code_prose" then
+      return cat.id == "prose" and "prose" or "code"
+    end
+    if cat.group == "general" or cat.group == "characters" or cat.group == "fingers" or cat.group == "custom" then
+      return "drill"
+    end
+  end
+
+  return "other"
+end
+
+local function average(values)
+  if #values == 0 then
+    return nil
+  end
+  local sum = 0
+  for _, v in ipairs(values) do
+    sum = sum + v
+  end
+  return sum / #values
+end
+
+local function average_pair(a, b)
+  if a ~= nil and b ~= nil then
+    return (a + b) / 2
+  end
+  return a or b
+end
+
+local function summarize_profile(history, profile)
+  local items = {}
+  for _, item in ipairs(history) do
+    if history_category_profile(item.category) == profile then
+      items[#items + 1] = item
+    end
+  end
+  if #items == 0 then
+    return nil
+  end
+
+  local wpm_values = {}
+  local uncorrected_values = {}
+  local corrected_values = {}
+  local backspace_values = {}
+  for _, item in ipairs(items) do
+    wpm_values[#wpm_values + 1] = item.wpm or 0
+    uncorrected_values[#uncorrected_values + 1] = history_uncorrected_accuracy(item)
+    corrected_values[#corrected_values + 1] = history_corrected_accuracy(item)
+    backspace_values[#backspace_values + 1] = history_backspaces_per_100(item)
+  end
+
+  return {
+    count = #items,
+    avg_wpm = average(wpm_values) or 0,
+    avg_uncorrected = average(uncorrected_values) or 0,
+    avg_corrected = average(corrected_values) or 0,
+    avg_backspaces = average(backspace_values) or 0,
+  }
+end
+
 -- Render an ASCII chart from a list of values.
 -- Returns lines (strings) and highlights ({ line_offset, col_start, col_end, hl_group }).
 local function render_chart(values, width, height, thresholds)
@@ -355,6 +439,93 @@ function M.render(buf, ns, win, opts)
       local score_hl = (b.score or 0) >= 400 and "SplitTyperGood" or ((b.score or 0) >= 100 and "SplitTyperOk" or "SplitTyperStats")
       add_hl(#line - #tostring(b.score or 0), #line, score_hl)
     end
+    add("")
+  end
+
+  if #history > 0 then
+    add_sep("Transfer Quality")
+
+    local prose = summarize_profile(history, "prose")
+    local code = summarize_profile(history, "code")
+    local drill = summarize_profile(history, "drill")
+
+    if prose or code or drill then
+      local function add_profile_line(label, summary)
+        if not summary then
+          add(string.format("    %-8s  (no sessions yet)", label))
+          add_hl(0, #lines[#lines], "SplitTyperPending")
+          return
+        end
+        local line = string.format(
+          "    %-8s  %2d sessions  %3d WPM  %.1f%% uncorr  %.1f%% corr  %.1f backsp/100",
+          label,
+          summary.count,
+          math.floor(summary.avg_wpm + 0.5),
+          math.floor(summary.avg_uncorrected * 10) / 10,
+          math.floor(summary.avg_corrected * 10) / 10,
+          math.floor(summary.avg_backspaces * 10) / 10
+        )
+        add(line)
+        local corr_hl = summary.avg_corrected >= 95 and "SplitTyperGood"
+          or (summary.avg_corrected >= 85 and "SplitTyperOk" or "SplitTyperBad")
+        add_hl(39, 53, corr_hl)
+      end
+
+      add_profile_line("Prose", prose)
+      add_profile_line("Code", code)
+      add_profile_line("Drill", drill)
+      add("")
+
+      if prose and code then
+        local wpm_gap = math.floor((code.avg_wpm - prose.avg_wpm) + (code.avg_wpm >= prose.avg_wpm and 0.5 or -0.5))
+        local corr_gap = math.floor((code.avg_corrected - prose.avg_corrected) * 10) / 10
+        local line = string.format(
+          "    Code vs prose gap: %+d WPM  %+0.1f corrected acc",
+          wpm_gap,
+          corr_gap
+        )
+        add(line)
+        local gap_hl = "SplitTyperGood"
+        if wpm_gap <= -8 or corr_gap <= -3 then
+          gap_hl = "SplitTyperBad"
+        elseif wpm_gap < 0 or corr_gap < 0 then
+          gap_hl = "SplitTyperOk"
+        end
+        add_hl(24, #line, gap_hl)
+      else
+        add("    Need both prose and code sessions to measure real-text transfer.")
+        add_hl(0, #lines[#lines], "SplitTyperPending")
+      end
+
+      if drill and (prose or code) then
+        local real_text_wpm = average_pair(prose and prose.avg_wpm or nil, code and code.avg_wpm or nil)
+        local real_text_corr = average_pair(prose and prose.avg_corrected or nil, code and code.avg_corrected or nil)
+        if real_text_wpm and real_text_corr then
+          local drill_gap_wpm = math.floor((drill.avg_wpm - real_text_wpm) + (drill.avg_wpm >= real_text_wpm and 0.5 or -0.5))
+          local drill_gap_corr = math.floor((drill.avg_corrected - real_text_corr) * 10) / 10
+          local line = string.format(
+            "    Drill vs real-text gap: %+d WPM  %+0.1f corrected acc",
+            drill_gap_wpm,
+            drill_gap_corr
+          )
+          add(line)
+          local gap_hl = "SplitTyperGood"
+          if drill_gap_wpm >= 10 or drill_gap_corr >= 4 then
+            gap_hl = "SplitTyperBad"
+          elseif drill_gap_wpm > 4 or drill_gap_corr > 2 then
+            gap_hl = "SplitTyperOk"
+          end
+          add_hl(28, #line, gap_hl)
+        end
+      else
+        add("    Add a mix of drills and real text to see whether lesson gains are transferring.")
+        add_hl(0, #lines[#lines], "SplitTyperPending")
+      end
+    else
+      add("    Not enough history yet to compare drills against prose or code.")
+      add_hl(0, #lines[#lines], "SplitTyperPending")
+    end
+
     add("")
   end
 
