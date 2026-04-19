@@ -13,6 +13,7 @@ A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware dr
 - **Timed practice** with adaptive 1-5 minute sessions that keep generating text until the timer expires
 - **Combo trainer** with 5 modifier-drill categories for `Ctrl`, `Alt`, numbers, and mixed combinations
 - **Character reaction drill** with 4 prompt pools and per-hit reaction timing
+- **Benchmarks** with stable prose, code, and transition baselines stored separately from normal practice history
 - **Strictness mode** applied to any free-play drill: cycle `Normal` → `Precision` (no backspace) → `Accuracy` (no backspace, first-error fail, repeat until clean) with a single keystroke
 - **Stats dashboard** with WPM and accuracy trends, best scores, timed-session postmortems, weakest keys, and streak tracking
 - **Persistent data** for course progress, session history, and all-time error analysis; isolated per layout so switching layouts does not pollute stats
@@ -69,6 +70,7 @@ The command supports completion for built-in entry points, group ids, and catego
 - `[t]` Weak Key Practice
 - `[w]` Weak Transitions
 - `[d]` Timed Practice
+- `[b]` Benchmarks
 - `[k]` Combo Trainer
 - `[x]` Character Reaction
 - `[s]` Stats Dashboard
@@ -139,6 +141,12 @@ Course, Weak Key, Weak Transition, and Timed sessions keep their own rules and i
 - Timer starts on the first keypress
 - Text extends automatically as you approach the end of the current chunk
 - Results include a timed postmortem with weak keys, weak bigrams, and late-session drift
+
+### Benchmarks
+
+- Stable fixed-text checks for prose, code, and transition-heavy typing
+- Saved separately from normal practice history so your baselines stay clean
+- The first attempt becomes your baseline; later attempts track latest and best performance
 
 ### Combo Trainer
 

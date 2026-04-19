@@ -403,6 +403,16 @@ function M.show_results(ctx)
   end
 
   local stats = ctx.state_mod.get_stats(state)
+  local benchmark_summary = state.benchmark_id and ctx.benchmarks.get_summary() or nil
+  local benchmark_info = nil
+  if state.benchmark_id and benchmark_summary then
+    for _, item in ipairs(benchmark_summary) do
+      if item.definition.id == state.benchmark_id then
+        benchmark_info = item
+        break
+      end
+    end
+  end
   local profile_hint = build_profile_hint(state.category_id, stats)
   local rating, rating_hl
   if stats.score >= 800 then
@@ -433,6 +443,8 @@ function M.show_results(ctx)
   add("")
   if state.failed_early and state.fail_reason then
     add("       ACCURACY GATE MISSED")
+  elseif state.benchmark_id then
+    add("       BENCHMARK COMPLETE")
   else
     add(state.timed_mode and "       TIMED SESSION COMPLETE" or "       EXERCISE COMPLETE")
   end
@@ -481,6 +493,42 @@ function M.show_results(ctx)
     if profile_hint.insight_line then
       add(profile_hint.insight_line)
       hl(17, #lines[#lines], profile_hint.insight_hl)
+    end
+  end
+
+  if benchmark_info then
+    local first = benchmark_info.first
+    local latest = benchmark_info.latest
+    local best = benchmark_info.best
+    add("")
+    add(string.format(
+      "    Benchmark:   %s",
+      benchmark_info.definition.name
+    ))
+    hl(17, #lines[#lines], "SplitTyperStats")
+    if first then
+      add(string.format(
+        "    Baseline:    %d WPM  %.1f%% corrected",
+        first.wpm or 0,
+        first.corrected_accuracy or first.efficiency or first.accuracy or 0
+      ))
+      hl(17, #lines[#lines], "SplitTyperPending")
+    end
+    if latest then
+      add(string.format(
+        "    Latest:      %d WPM  %.1f%% corrected",
+        latest.wpm or 0,
+        latest.corrected_accuracy or latest.efficiency or latest.accuracy or 0
+      ))
+      hl(17, #lines[#lines], "SplitTyperOk")
+    end
+    if best then
+      add(string.format(
+        "    Best:        %d WPM  %.1f%% corrected",
+        best.wpm or 0,
+        best.corrected_accuracy or best.efficiency or best.accuracy or 0
+      ))
+      hl(17, #lines[#lines], "SplitTyperGood")
     end
   end
 
@@ -543,13 +591,17 @@ function M.show_results(ctx)
     common.add_results_input_lock_notice(state, lines, highlights)
   end
   add("")
-  if state.repeat_until_clean and not state.timed_mode then
+  if state.benchmark_id then
+    add("    [n] Repeat benchmark")
+  elseif state.repeat_until_clean and not state.timed_mode then
     add("    [n] Repeat same prompt")
   else
     add(state.timed_mode and "    [n] New timed session" or "    [n] Next exercise")
   end
   hl(4, 7, "SplitTyperMenuKey")
-  if state.repeat_until_clean and not state.timed_mode then
+  if state.benchmark_id then
+    add("    [r] Benchmark menu")
+  elseif state.repeat_until_clean and not state.timed_mode then
     add("    [r] New prompt in same category")
   else
     add(state.timed_mode and "    [r] Timed menu" or "    [r] Retry same exercise")
@@ -566,7 +618,12 @@ function M.show_results(ctx)
   common.render_buffer(state, lines, highlights)
 
   ctx.window.clear_keymaps(state)
-  if state.timed_mode then
+  if state.benchmark_id then
+    ctx.window.map(state, "n", function()
+      ctx.actions.start_benchmark(state.benchmark_id)
+    end)
+    ctx.window.map(state, "r", ctx.actions.show_benchmark_menu)
+  elseif state.timed_mode then
     local minutes = tonumber((state.category_id or ""):match("timed_(%d+)m"))
     common.map_results_action(ctx, "n", function()
       ctx.actions.start_timed_session(minutes or 1)

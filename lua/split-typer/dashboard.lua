@@ -1,3 +1,4 @@
+local benchmarks = require("split-typer.benchmarks")
 local errors = require("split-typer.errors")
 local storage = require("split-typer.storage")
 
@@ -528,6 +529,46 @@ function M.render(buf, ns, win, opts)
 
     add("")
   end
+
+  local benchmark_summary = benchmarks.get_summary()
+  local have_benchmarks = false
+  for _, item in ipairs(benchmark_summary) do
+    if item.count > 0 then
+      have_benchmarks = true
+      break
+    end
+  end
+
+  add_sep("Benchmarks")
+  if have_benchmarks then
+    for _, item in ipairs(benchmark_summary) do
+      if item.count > 0 then
+        local first = item.first
+        local latest = item.latest
+        local best = item.best
+        local line = string.format(
+          "    %-16s base %3d/%.1f  latest %3d/%.1f  best %3d/%.1f  (%d runs)",
+          item.definition.name,
+          first and (first.wpm or 0) or 0,
+          first and (first.corrected_accuracy or first.efficiency or first.accuracy or 0) or 0,
+          latest and (latest.wpm or 0) or 0,
+          latest and (latest.corrected_accuracy or latest.efficiency or latest.accuracy or 0) or 0,
+          best and (best.wpm or 0) or 0,
+          best and (best.corrected_accuracy or best.efficiency or best.accuracy or 0) or 0,
+          item.count
+        )
+        add(line)
+        local latest_corr = latest and (latest.corrected_accuracy or latest.efficiency or latest.accuracy or 0) or 0
+        local best_corr = best and (best.corrected_accuracy or best.efficiency or best.accuracy or 0) or 0
+        add_hl(25, 35, latest_corr >= 95 and "SplitTyperGood" or (latest_corr >= 85 and "SplitTyperOk" or "SplitTyperBad"))
+        add_hl(41, 49, best_corr >= 95 and "SplitTyperGood" or (best_corr >= 85 and "SplitTyperOk" or "SplitTyperBad"))
+      end
+    end
+  else
+    add("    No benchmark attempts yet. Run benchmarks from the main menu to establish baselines.")
+    add_hl(0, #lines[#lines], "SplitTyperPending")
+  end
+  add("")
 
   local timed_history = get_timed_history(history)
   if #timed_history > 0 then

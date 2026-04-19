@@ -10,6 +10,7 @@ M.show_course_results = course.show_course_results
 M.show_combo_menu = menus.show_combo_menu
 M.show_reaction_menu = menus.show_reaction_menu
 M.show_transition_menu = menus.show_transition_menu
+M.show_benchmark_menu = menus.show_benchmark_menu
 M.show_menu = menus.show_menu
 M.show_group = menus.show_group
 M.show_timed_menu = menus.show_timed_menu

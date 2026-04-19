@@ -209,6 +209,81 @@ function M.show_transition_menu(ctx)
   ctx.window.map(state, "<C-c>", ctx.actions.cleanup)
 end
 
+function M.show_benchmark_menu(ctx)
+  local state = ctx.state
+  ctx.state_mod.stop_timer(state)
+  state.screen = "benchmark_menu"
+  state.mode = "timed"
+  ctx.window.ensure_window(state, ctx.actions.cleanup)
+  ctx.window.clear_buffer(state)
+
+  local defs = ctx.benchmarks.get_definitions()
+  local summary_by_id = {}
+  for _, item in ipairs(ctx.benchmarks.get_summary()) do
+    summary_by_id[item.definition.id] = item
+  end
+
+  local lines = {}
+  local highlights = {}
+
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "       BENCHMARKS"
+  lines[#lines + 1] = "       Stable fixed-text checks for baseline, latest, and best performance"
+  lines[#lines + 1] = ""
+  highlights[#highlights + 1] = { 1, 0, #lines[2], "SplitTyperTitle" }
+  highlights[#highlights + 1] = { 2, 0, #lines[3], "SplitTyperHeader" }
+
+  local sep = string.rep("\u{2500}", 78)
+  lines[#lines + 1] = sep
+  highlights[#highlights + 1] = { #lines - 1, 0, #sep, "SplitTyperSep" }
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "  The first attempt becomes your baseline. Benchmarks are saved separately from normal practice history."
+  highlights[#highlights + 1] = { #lines - 1, 0, #lines[#lines], "SplitTyperMenuDesc" }
+  lines[#lines + 1] = ""
+
+  for _, def in ipairs(defs) do
+    local summary = summary_by_id[def.id]
+    local detail = def.description
+    if summary and summary.count > 0 then
+      local first = summary.first
+      local latest = summary.latest
+      local best = summary.best
+      detail = string.format(
+        "%s  [baseline %d WPM %.1f%% | latest %d WPM %.1f%% | best %d WPM %.1f%%]",
+        def.description,
+        first and (first.wpm or 0) or 0,
+        first and (first.corrected_accuracy or first.efficiency or first.accuracy or 0) or 0,
+        latest and (latest.wpm or 0) or 0,
+        latest and (latest.corrected_accuracy or latest.efficiency or latest.accuracy or 0) or 0,
+        best and (best.wpm or 0) or 0,
+        best and (best.corrected_accuracy or best.efficiency or best.accuracy or 0) or 0
+      )
+    end
+    local line = string.format("  [%s]  %-16s %s", def.key, def.name, detail)
+    lines[#lines + 1] = line
+    highlights[#highlights + 1] = { #lines - 1, 2, 5, "SplitTyperMenuKey" }
+    highlights[#highlights + 1] = { #lines - 1, 23, #line, summary and summary.count > 0 and "SplitTyperMenuDesc" or "SplitTyperPending" }
+  end
+
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = sep
+  highlights[#highlights + 1] = { #lines - 1, 0, #sep, "SplitTyperSep" }
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "  [Esc] Back to menu    [q] Quit"
+
+  common.render_buffer(state, lines, highlights)
+
+  ctx.window.clear_keymaps(state)
+  for _, def in ipairs(defs) do
+    ctx.window.map(state, def.key, function()
+      ctx.actions.start_benchmark(def.id)
+    end)
+  end
+  ctx.window.map(state, "<Esc>", ctx.actions.show_menu)
+  ctx.window.map(state, "q", ctx.actions.cleanup)
+  ctx.window.map(state, "<C-c>", ctx.actions.cleanup)
+end
+
 function M.show_menu(ctx)
   local state = ctx.state
   ctx.state_mod.stop_timer(state)
@@ -302,6 +377,7 @@ function M.show_menu(ctx)
   end
   common.push_menu_entry(lines, highlights, "w", "Weak Transitions", transition_desc)
   common.push_menu_entry(lines, highlights, "d", "Timed Practice", "Adaptive 1-5 minute endurance sessions")
+  common.push_menu_entry(lines, highlights, "b", "Benchmarks", "Stable baseline and regression checks")
   common.push_menu_entry(lines, highlights, "k", "Combo Trainer", "Practice Ctrl, Alt and modifier combos")
   common.push_menu_entry(lines, highlights, "x", "Character Reaction", "Single-key bracket/symbol drill, 50 prompts")
   common.push_menu_entry(lines, highlights, "s", "Stats Dashboard", "View your typing profile")
@@ -335,6 +411,7 @@ function M.show_menu(ctx)
     end
   end)
   ctx.window.map(state, "w", ctx.actions.show_transition_menu)
+  ctx.window.map(state, "b", ctx.actions.show_benchmark_menu)
   ctx.window.map(state, "k", ctx.actions.show_combo_menu)
   ctx.window.map(state, "x", ctx.actions.show_reaction_menu)
   ctx.window.map(state, "d", ctx.actions.show_timed_menu)

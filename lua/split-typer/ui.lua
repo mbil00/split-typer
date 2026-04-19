@@ -1,3 +1,4 @@
+local benchmarks = require("split-typer.benchmarks")
 local combo = require("split-typer.ui.combo")
 local course = require("split-typer.course")
 local errs = require("split-typer.errors")
@@ -14,6 +15,7 @@ local random_seeded = false
 local state = state_mod.state
 
 local ctx = {
+  benchmarks = benchmarks,
   combo = combo,
   course = course,
   errs = errs,
@@ -40,6 +42,13 @@ local function set_buffer_text(text)
   local lines = vim.split(text, "\n")
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
   vim.bo[state.buf].modifiable = false
+end
+
+local function build_benchmark_text(def)
+  local generator = benchmarks.make_chunk_generator(def)
+  local first = generator()
+  local second = generator()
+  return first .. "\n" .. second, generator
 end
 
 local function append_history(entry)
@@ -149,7 +158,7 @@ local function save_stats()
 
   local timed_postmortem = build_timed_postmortem(typed_char_map)
 
-  append_history({
+  local entry = {
     schema_version = 2,
     date = os.date("%Y-%m-%d %H:%M:%S"),
     category = state.category_id,
@@ -168,7 +177,18 @@ local function save_stats()
     chars = stats.total_chars,
     timed = state.timed_mode or nil,
     timed_postmortem = timed_postmortem,
-  })
+  }
+
+  if state.benchmark_id then
+    local def = benchmarks.get_definition(state.benchmark_id)
+    entry.benchmark_id = state.benchmark_id
+    entry.benchmark_name = def and def.name or state.benchmark_id
+    entry.benchmark_profile = def and def.profile or nil
+    entry.benchmark_duration = def and def.duration or nil
+    benchmarks.save_result(entry)
+  else
+    append_history(entry)
+  end
 end
 
 local function save_combo_stats()
@@ -308,6 +328,10 @@ function M.show_transition_menu()
   screens.show_transition_menu(ctx)
 end
 
+function M.show_benchmark_menu()
+  screens.show_benchmark_menu(ctx)
+end
+
 function M.show_menu()
   screens.show_menu(ctx)
 end
@@ -383,6 +407,35 @@ end
 
 function M.show_dashboard()
   screens.show_dashboard(ctx)
+end
+
+function M.start_benchmark(benchmark_id)
+  local def = benchmarks.get_definition(benchmark_id)
+  if not def then
+    vim.notify("Unknown benchmark: " .. tostring(benchmark_id), vim.log.levels.ERROR)
+    return
+  end
+
+  state.mode = "timed"
+  state.screen = "exercise"
+
+  local text, chunk_generator = build_benchmark_text(def)
+  state_mod.reset_typing_session(state, text, {
+    category_id = benchmark_id,
+    benchmark_id = benchmark_id,
+    exercise_idx = nil,
+    no_backspace = false,
+    timed_mode = true,
+    timed_duration = def.duration,
+    chunk_generator = chunk_generator,
+    generated_desc = "Benchmark - stable fixed text",
+  })
+
+  window.ensure_window(state, M.cleanup)
+  window.clear_buffer(state)
+  set_buffer_text(text)
+  typing.setup_keymaps(ctx)
+  typing.update_display(ctx)
 end
 
 function M.start_targeted_exercise()
@@ -529,6 +582,9 @@ ctx.actions = {
   show_transition_menu = function()
     M.show_transition_menu()
   end,
+  show_benchmark_menu = function()
+    M.show_benchmark_menu()
+  end,
   show_dashboard = function()
     M.show_dashboard()
   end,
@@ -571,6 +627,9 @@ ctx.actions = {
   start_transition_reinforcement = function(class_id, transitions)
     M.start_transition_reinforcement(class_id, transitions)
   end,
+  start_benchmark = function(benchmark_id)
+    M.start_benchmark(benchmark_id)
+  end,
   start_timed_session = function(minutes)
     M.start_timed_session(minutes)
   end,
@@ -602,6 +661,10 @@ function M.open(category)
     end
     if category == "timed" then
       M.show_timed_menu()
+      return
+    end
+    if category == "benchmarks" then
+      M.show_benchmark_menu()
       return
     end
     if category == "transitions" then

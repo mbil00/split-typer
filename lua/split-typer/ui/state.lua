@@ -13,6 +13,7 @@ M.state = {
   course_stage = nil,
   target = nil,
   generated_desc = nil,
+  benchmark_id = nil,
   transition_focus_class = nil,
   transition_focus_transitions = nil,
   char_map = nil,
@@ -117,6 +118,7 @@ end
 local function reset_session_state(state)
   state.target = nil
   state.generated_desc = nil
+  state.benchmark_id = nil
   state.transition_focus_class = nil
   state.transition_focus_transitions = nil
   state.char_map = nil
@@ -244,6 +246,7 @@ function M.reset_typing_session(state, text, opts)
   reset_session_state(state)
   state.target = text
   state.generated_desc = opts.generated_desc
+  state.benchmark_id = opts.benchmark_id
   state.transition_focus_class = opts.transition_focus_class
   state.transition_focus_transitions = opts.transition_focus_transitions
   state.char_map = M.build_char_map(text)
