@@ -14,6 +14,7 @@ A Neovim plugin for adaptive touch-typing practice, with split-keyboard-aware dr
 - **Combo trainer** with 5 modifier-drill categories for `Ctrl`, `Alt`, numbers, and mixed combinations
 - **Character reaction drill** with 4 prompt pools and per-hit reaction timing
 - **Benchmarks** with stable prose, code, and transition baselines stored separately from normal practice history
+- **Phase-aware coaching** that labels where you are in the learning loop and gives a short next-step recommendation after course runs, benchmarks, timed work, and free-play sessions
 - **Strictness mode** applied to any free-play drill: cycle `Normal` → `Precision` (no backspace) → `Accuracy` (no backspace, first-error fail, repeat until clean) with a single keystroke
 - **Stats dashboard** with WPM and accuracy trends, best scores, timed-session postmortems, weakest keys, and streak tracking
 - **Persistent data** for course progress, session history, and all-time error analysis; isolated per layout so switching layouts does not pollute stats
@@ -119,6 +120,7 @@ Course, Weak Key, Weak Transition, and Timed sessions keep their own rules and i
 - WPM and accuracy floors rise with each level; the mastery stage always raises them further
 - Early `Single Key` and `Bigrams` reps on levels 1-3 allow corrections; later reps stay no-backspace
 - Failed course runs can offer a short transition-reinforcement drill based on the movement pattern that broke down in that session
+- Course screens label the current teaching phase (`Mapping`, `Stabilization`, `Transfer`, `Automaticity`, `Optimization`) and keep the coaching text to one short actionable recommendation
 
 ### Weak Key Practice
 
@@ -172,6 +174,7 @@ Course, Weak Key, Weak Transition, and Timed sessions keep their own rules and i
 ## Results And Stats
 
 - Result screens support quick follow-up actions such as next exercise, retry, timed menu, main menu, and stats dashboard
+- Result screens add a short phase/coaching block so you do not have to infer the next practice move from raw numbers alone
 - Session mistakes are summarized by problem keys and common substitutions
 - The stats dashboard shows long-term trends, best scores by category, weakest keys, hardest transitions, activity, and practice streaks
 - The dashboard also highlights difficult transition chains so you can spot repeated movement failures, not just single-key misses

@@ -1,4 +1,5 @@
 local common = require("split-typer.ui.screens.common")
+local coaching = require("split-typer.coaching")
 
 local M = {}
 
@@ -324,11 +325,13 @@ function M.show_menu(ctx)
     end
   end
   local course_status
+  local course_phase = coaching.build_course_overview(ctx.course, current_level)
   if progress.validated and current_level == #ctx.course.levels then
-    course_status = "All levels validated!"
+    course_status = string.format("%s - All levels validated!", course_phase.phase)
   elseif progress.passed then
     course_status = string.format(
-      "Level %d: %s (%d/%d validated)",
+      "%s - Level %d: %s (%d/%d validated)",
+      course_phase.phase,
       current_level,
       level.name,
       stages_validated,
@@ -336,7 +339,8 @@ function M.show_menu(ctx)
     )
   else
     course_status = string.format(
-      "Level %d: %s (%d/%d passed, %d/%d validated)",
+      "%s - Level %d: %s (%d/%d passed, %d/%d validated)",
+      course_phase.phase,
       current_level,
       level.name,
       stages_passed,

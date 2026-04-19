@@ -1,4 +1,5 @@
 local common = require("split-typer.ui.screens.common")
+local coaching = require("split-typer.coaching")
 
 local M = {}
 
@@ -54,6 +55,11 @@ function M.show_course(ctx)
   local legend_line = "  Stages: " .. table.concat(legend_parts, "  ")
   lines[#lines + 1] = legend_line
   highlights[#highlights + 1] = { #lines - 1, 0, #legend_line, "SplitTyperMenuDesc" }
+  local course_coaching = coaching.build_course_overview(ctx.course, current)
+  lines[#lines + 1] = course_coaching.phase_line
+  highlights[#highlights + 1] = { #lines - 1, 0, #course_coaching.phase_line, course_coaching.phase_hl }
+  lines[#lines + 1] = course_coaching.recommendation_line
+  highlights[#highlights + 1] = { #lines - 1, 0, #course_coaching.recommendation_line, course_coaching.recommendation_hl }
   lines[#lines + 1] = ""
 
   local level_keys = {}
@@ -212,6 +218,18 @@ function M.show_course_results(ctx)
   if #state.error_log > 0 then
     session_transition_focus = ctx.errs.get_session_transition_focus(state.error_log, typed_char_map, state.pos)
   end
+  local coaching_info = coaching.build_session_coaching({
+    course = ctx.course,
+    level_id = level_id,
+    stage = stage,
+    stage_prog = stage_prog,
+    stage_validated = stage_validated,
+    level_validated = level_validated,
+    passed_exercise = passed_exercise,
+    validation_ready = ctx.course.is_stage_validation_ready(level_id, stage_id),
+    session_transition_focus = session_transition_focus,
+    stats = stats,
+  })
 
   if level_validated then
     lines[#lines + 1] = "       LEVEL VALIDATED!"
@@ -252,6 +270,10 @@ function M.show_course_results(ctx)
     lines[#lines + 1] = validation_line
     highlights[#highlights + 1] = { #lines - 1, 0, #validation_line, "SplitTyperMenuDesc" }
   end
+  lines[#lines + 1] = coaching_info.phase_line
+  highlights[#highlights + 1] = { #lines - 1, 0, #coaching_info.phase_line, coaching_info.phase_hl }
+  lines[#lines + 1] = coaching_info.recommendation_line
+  highlights[#highlights + 1] = { #lines - 1, 0, #coaching_info.recommendation_line, coaching_info.recommendation_hl }
 
   if not passed_exercise then
     local reasons = {}
