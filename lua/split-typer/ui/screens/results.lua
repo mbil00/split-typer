@@ -1,6 +1,179 @@
 local common = require("split-typer.ui.screens.common")
+local storage = require("split-typer.storage")
 
 local M = {}
+
+local function load_history()
+  return storage.read_json(storage.layout_data_path("history"), {})
+end
+
+local function history_category_profile(category_id)
+  if not category_id or #category_id == 0 then
+    return "other"
+  end
+
+  if category_id == "prose" then
+    return "prose"
+  end
+
+  if category_id:match("^code_") or category_id == "mixed" then
+    return "code"
+  end
+
+  if category_id:match("^course_")
+    or category_id == "targeted_practice"
+    or category_id == "transition_practice"
+    or category_id == "course_transition_reinforcement"
+    or category_id:match("^timed_")
+  then
+    return "drill"
+  end
+
+  local exercises = require("split-typer.exercises")
+  local cat = exercises.get_category(category_id)
+  if cat then
+    if cat.group == "code_prose" then
+      return cat.id == "prose" and "prose" or "code"
+    end
+    if cat.group == "general" or cat.group == "characters" or cat.group == "fingers" or cat.group == "custom" then
+      return "drill"
+    end
+  end
+
+  return "other"
+end
+
+local function average(values)
+  if #values == 0 then
+    return nil
+  end
+  local sum = 0
+  for _, v in ipairs(values) do
+    sum = sum + v
+  end
+  return sum / #values
+end
+
+local function average_pair(a, b)
+  if a ~= nil and b ~= nil then
+    return (a + b) / 2
+  end
+  return a or b
+end
+
+local function summarize_profile(history, profile)
+  local items = {}
+  for _, item in ipairs(history) do
+    if history_category_profile(item.category) == profile then
+      items[#items + 1] = item
+    end
+  end
+  if #items == 0 then
+    return nil
+  end
+
+  local wpm_values = {}
+  local corrected_values = {}
+  for _, item in ipairs(items) do
+    wpm_values[#wpm_values + 1] = item.wpm or 0
+    corrected_values[#corrected_values + 1] = item.corrected_accuracy or item.efficiency or item.accuracy or 0
+  end
+
+  return {
+    count = #items,
+    avg_wpm = average(wpm_values) or 0,
+    avg_corrected = average(corrected_values) or 0,
+  }
+end
+
+local function round_delta(value)
+  return math.floor(value + (value >= 0 and 0.5 or -0.5))
+end
+
+local function build_profile_hint(category_id, stats)
+  local profile = history_category_profile(category_id)
+  if profile == "other" then
+    return nil
+  end
+
+  local history = load_history()
+  local prose = summarize_profile(history, "prose")
+  local code = summarize_profile(history, "code")
+  local drill = summarize_profile(history, "drill")
+
+  local label = profile == "code" and "Code"
+    or (profile == "prose" and "Prose" or "Drill")
+  local current_line = string.format(
+    "    Profile:     %s session  |  this run: %d WPM, %.1f%% corrected",
+    label,
+    stats.wpm,
+    stats.corrected_accuracy
+  )
+
+  local insight_line = nil
+  local insight_hl = "SplitTyperPending"
+
+  if profile == "code" then
+    if prose then
+      local wpm_gap = round_delta(stats.wpm - prose.avg_wpm)
+      local corr_gap = math.floor((stats.corrected_accuracy - prose.avg_corrected) * 10) / 10
+      if wpm_gap <= -8 or corr_gap <= -3 then
+        insight_line = string.format("    Hint:        Code is behind your prose baseline by %+d WPM / %+0.1f corrected acc", wpm_gap, corr_gap)
+        insight_hl = "SplitTyperBad"
+      elseif wpm_gap < 0 or corr_gap < 0 then
+        insight_line = string.format("    Hint:        Code still trails prose slightly: %+d WPM / %+0.1f corrected acc", wpm_gap, corr_gap)
+        insight_hl = "SplitTyperOk"
+      else
+        insight_line = "    Hint:        Code is holding up well against your prose baseline"
+        insight_hl = "SplitTyperGood"
+      end
+    else
+      insight_line = "    Hint:        Add prose sessions to measure whether code fluency is transferring cleanly"
+    end
+  elseif profile == "prose" then
+    if code then
+      local wpm_gap = round_delta(code.avg_wpm - stats.wpm)
+      local corr_gap = math.floor((code.avg_corrected - stats.corrected_accuracy) * 10) / 10
+      if wpm_gap <= -8 or corr_gap <= -3 then
+        insight_line = "    Hint:        Prose is clearly ahead of code overall; keep mixing in code practice"
+        insight_hl = "SplitTyperOk"
+      elseif wpm_gap < 0 or corr_gap < 0 then
+        insight_line = "    Hint:        Prose is a bit cleaner than code overall; a few code reps should close the gap"
+        insight_hl = "SplitTyperOk"
+      else
+        insight_line = "    Hint:        Your code lane is keeping pace with prose better than usual"
+        insight_hl = "SplitTyperGood"
+      end
+    else
+      insight_line = "    Hint:        Add code sessions to see whether prose gains carry into punctuation-heavy text"
+    end
+  elseif profile == "drill" then
+    local real_text_wpm = average_pair(prose and prose.avg_wpm or nil, code and code.avg_wpm or nil)
+    local real_text_corr = average_pair(prose and prose.avg_corrected or nil, code and code.avg_corrected or nil)
+    if real_text_wpm and real_text_corr then
+      local wpm_gap = round_delta(stats.wpm - real_text_wpm)
+      local corr_gap = math.floor((stats.corrected_accuracy - real_text_corr) * 10) / 10
+      if wpm_gap >= 10 or corr_gap >= 4 then
+        insight_line = string.format("    Hint:        Drills are ahead of real text by %+d WPM / %+0.1f corrected acc", wpm_gap, corr_gap)
+        insight_hl = "SplitTyperBad"
+      elseif wpm_gap > 4 or corr_gap > 2 then
+        insight_line = string.format("    Hint:        Drill skill is only partly transferring: %+d WPM / %+0.1f corrected acc", wpm_gap, corr_gap)
+        insight_hl = "SplitTyperOk"
+      else
+        insight_line = "    Hint:        Drill performance is transferring reasonably into prose/code"
+        insight_hl = "SplitTyperGood"
+      end
+    else
+      insight_line = "    Hint:        Add some prose or code sessions so drill gains can be checked against real text"
+    end
+  end
+
+  return {
+    current_line = current_line,
+    insight_line = insight_line,
+    insight_hl = insight_hl,
+  }
+end
 
 function M.show_combo_results(ctx)
   local state = ctx.state
@@ -230,6 +403,7 @@ function M.show_results(ctx)
   end
 
   local stats = ctx.state_mod.get_stats(state)
+  local profile_hint = build_profile_hint(state.category_id, stats)
   local rating, rating_hl
   if stats.score >= 800 then
     rating, rating_hl = "MASTER", "SplitTyperGood"
@@ -298,6 +472,16 @@ function M.show_results(ctx)
     add("")
     add("    Focus:       " .. state.generated_desc)
     hl(17, #lines[#lines], "SplitTyperPending")
+  end
+
+  if profile_hint then
+    add("")
+    add(profile_hint.current_line)
+    hl(17, #lines[#lines], "SplitTyperStats")
+    if profile_hint.insight_line then
+      add(profile_hint.insight_line)
+      hl(17, #lines[#lines], profile_hint.insight_hl)
+    end
   end
 
   if state.fail_reason then
