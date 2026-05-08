@@ -56,14 +56,15 @@ return {
         h.assert_eq(course.get_current_level(), 1)
         h.assert_eq(course.is_unlocked(2), false)
 
-        for _, stage_def in ipairs(course.stage_defs) do
+        local level_stages = course.get_stage_defs(1)
+        for _, stage_def in ipairs(level_stages) do
           local passed1, cleared1, level_complete1 = pass_stage(course, 1, stage_def.id)
           h.assert_eq(passed1, true)
           h.assert_eq(level_complete1, false)
           local passed2, cleared2, level_complete2 = pass_stage(course, 1, stage_def.id)
           h.assert_eq(passed2, true)
           h.assert_eq(cleared2, true)
-          if stage_def.id ~= course.stage_defs[#course.stage_defs].id then
+          if stage_def.id ~= level_stages[#level_stages].id then
             h.assert_eq(level_complete2, false, "level should not complete until the final stage clears")
           end
         end

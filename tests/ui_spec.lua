@@ -18,6 +18,31 @@ end
 
 return {
   {
+    name = "freeplay restart preserves the original strictness rules",
+    fn = function()
+      with_ui_env("ui-freeplay-retry", function()
+        local state_mod = require("split-typer.ui.state")
+        local ui = require("split-typer.ui")
+        local state = state_mod.state
+
+        state.strictness = "accuracy"
+        ui.start_exercise("home_row")
+        h.assert_eq(state.no_backspace, true, "accuracy strictness applies at session start")
+        h.assert_eq(state.error_limit, 0)
+        h.assert_eq(state.repeat_until_clean, true)
+
+        -- Changing the strictness setting after the session has started must
+        -- not retroactively change the rules of the running session on retry.
+        state.strictness = "normal"
+        ui.restart_current_text()
+
+        h.assert_eq(state.no_backspace, true, "retry must keep the rules the session started with")
+        h.assert_eq(state.error_limit, 0)
+        h.assert_eq(state.repeat_until_clean, true)
+      end)
+    end,
+  },
+  {
     name = "restart preserves targeted practice semantics and metadata",
     fn = function()
       with_ui_env("ui-targeted-retry", function()

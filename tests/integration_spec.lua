@@ -181,7 +181,9 @@ return {
     name = "plugin command opens the requested entry point",
     fn = function()
       h.with_isolated_env("integration-command", function()
-        vim.cmd("source " .. vim.fn.fnameescape("/mnt/ssd2/Projects/typing/plugin/split-typer.lua"))
+        local plugin_files = vim.api.nvim_get_runtime_file("plugin/split-typer.lua", false)
+        h.assert_truthy(plugin_files[1], "plugin/split-typer.lua should be discoverable on rtp")
+        vim.cmd("source " .. vim.fn.fnameescape(plugin_files[1]))
         vim.cmd("SplitTyper timed")
 
         local state = require("split-typer.ui.state").state

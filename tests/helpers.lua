@@ -1,8 +1,9 @@
 local M = {}
 
 local function clear_modules(prefix)
+  local sub_pattern = "^" .. vim.pesc(prefix) .. "%."
   for name in pairs(package.loaded) do
-    if name == prefix or name:match("^" .. prefix:gsub("%-", "%%-") .. "%.") then
+    if name == prefix or name:match(sub_pattern) then
       package.loaded[name] = nil
     end
   end

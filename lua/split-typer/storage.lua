@@ -47,7 +47,7 @@ function M.read_json(path, default)
     return decoded
   end
 
-  local corrupt_path = string.format("%s.corrupt.%d", path, os.time())
+  local corrupt_path = string.format("%s.corrupt.%d", path, vim.uv.hrtime())
   local renamed = os.rename(path, corrupt_path)
   vim.schedule(function()
     local msg = "split-typer: failed to decode JSON at " .. path

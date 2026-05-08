@@ -34,7 +34,20 @@ end
 
 local function is_typing_history_item(item)
   local mode = item.mode
-  return mode == nil or mode == "typing" or mode == "timed"
+  if mode == "typing" or mode == "timed" then
+    return true
+  end
+  if mode == "combo" or mode == "reaction" then
+    return false
+  end
+  -- Legacy entries written before the mode field existed: combo and reaction
+  -- categories are always prefixed, so use the category to keep their
+  -- CPM-magnitude speeds out of the WPM aggregates.
+  local category = item.category or ""
+  if category:match("^combo_") or category:match("^reaction_") then
+    return false
+  end
+  return true
 end
 
 local function history_uncorrected_accuracy(item)

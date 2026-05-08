@@ -10,6 +10,11 @@ return {
           { mode = "typing", category = "home_row", wpm = 40, speed = 40, speed_unit = "wpm", accuracy = 96, score = 200, time = 60, chars = 200 },
           { mode = "combo", category = "combo_ctrl", cpm = 300, speed = 300, speed_unit = "cpm", accuracy = 99, score = 220, time = 60, chars = 20 },
           { mode = "reaction", category = "reaction_symbols", cpm = 180, speed = 180, speed_unit = "cpm", accuracy = 98, score = 210, time = 60, chars = 50 },
+          -- Legacy combo/reaction entries written before the mode field existed
+          -- still wrote CPM into the wpm column; they must not pollute the
+          -- WPM average just because mode is nil.
+          { category = "combo_alt", wpm = 280, accuracy = 99, score = 215, time = 60, chars = 18 },
+          { category = "reaction_code", wpm = 200, accuracy = 97, score = 205, time = 60, chars = 40 },
         })
 
         local dashboard = require("split-typer.dashboard")
