@@ -87,6 +87,24 @@ function M.clear_buffer(state)
   end
   vim.bo[state.buf].modifiable = true
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, {})
+  M.clear_footer(state)
+end
+
+function M.set_footer(state, chunks, pos)
+  if not state.win or not vim.api.nvim_win_is_valid(state.win) then
+    return
+  end
+  pcall(vim.api.nvim_win_set_config, state.win, {
+    footer = chunks,
+    footer_pos = pos or "center",
+  })
+end
+
+function M.clear_footer(state)
+  if not state.win or not vim.api.nvim_win_is_valid(state.win) then
+    return
+  end
+  pcall(vim.api.nvim_win_set_config, state.win, { footer = "" })
 end
 
 function M.map(state, key, fn)

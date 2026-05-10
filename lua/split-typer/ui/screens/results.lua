@@ -3,6 +3,19 @@ local coaching = require("split-typer.coaching")
 
 local M = {}
 
+local function build_footer_chunks(actions)
+  local chunks = { { " ", "SplitTyperSep" } }
+  for i, action in ipairs(actions) do
+    if i > 1 then
+      chunks[#chunks + 1] = { "  ", "SplitTyperSep" }
+    end
+    chunks[#chunks + 1] = { "[" .. action.key .. "]", "SplitTyperMenuKey" }
+    chunks[#chunks + 1] = { " " .. action.label, "SplitTyperMenuText" }
+  end
+  chunks[#chunks + 1] = { " ", "SplitTyperSep" }
+  return chunks
+end
+
 function M.show_combo_results(ctx)
   local state = ctx.state
   ctx.state_mod.stop_timer(state)
@@ -102,6 +115,12 @@ function M.show_combo_results(ctx)
   add("")
 
   common.render_buffer(state, lines, highlights)
+  ctx.window.set_footer(state, build_footer_chunks({
+    { key = "n", label = "next" },
+    { key = "r", label = "retry" },
+    { key = "m", label = "menu" },
+    { key = "q", label = "quit" },
+  }))
 
   ctx.window.clear_keymaps(state)
   ctx.window.map(state, "n", function()
@@ -211,6 +230,13 @@ function M.show_reaction_results(ctx)
   add("")
 
   common.render_buffer(state, lines, highlights)
+  ctx.window.set_footer(state, build_footer_chunks({
+    { key = "n", label = "repeat" },
+    { key = "r", label = "reaction menu" },
+    { key = "m", label = "main menu" },
+    { key = "s", label = "stats" },
+    { key = "q", label = "quit" },
+  }))
 
   ctx.window.clear_keymaps(state)
   ctx.window.map(state, "n", function()
@@ -460,6 +486,24 @@ function M.show_results(ctx)
   add("")
 
   common.render_buffer(state, lines, highlights)
+
+  local n_label, r_label
+  if state.benchmark_id then
+    n_label, r_label = "repeat benchmark", "benchmark menu"
+  elseif state.repeat_until_clean and not state.timed_mode then
+    n_label, r_label = "repeat prompt", "new prompt"
+  elseif state.timed_mode then
+    n_label, r_label = "new session", "timed menu"
+  else
+    n_label, r_label = "next", "retry"
+  end
+  ctx.window.set_footer(state, build_footer_chunks({
+    { key = "n", label = n_label },
+    { key = "r", label = r_label },
+    { key = "m", label = "menu" },
+    { key = "s", label = "stats" },
+    { key = "q", label = "quit" },
+  }))
 
   ctx.window.clear_keymaps(state)
   if state.benchmark_id then
