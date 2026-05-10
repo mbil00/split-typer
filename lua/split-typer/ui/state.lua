@@ -1,6 +1,11 @@
 local M = {}
 local HESITATION_THRESHOLD_MS = 1200
 
+function M.wpm_from(correct_chars, elapsed_seconds)
+  if not elapsed_seconds or elapsed_seconds <= 0 then return 0 end
+  return (correct_chars / 5) / (elapsed_seconds / 60)
+end
+
 M.state = {
   buf = nil,
   win = nil,
@@ -340,8 +345,8 @@ function M.get_stats(state)
   local uncorrected_errors_per_100_chars = typed_chars > 0 and (state.error_count / typed_chars * 100) or 0
   local hesitations_per_100_chars = typed_chars > 0 and (hesitation_count / typed_chars * 100) or 0
   local avg_hesitation_ms = hesitation_count > 0 and (hesitation_total_ms / hesitation_count) or 0
-  local gross_wpm = elapsed > 0 and ((state.pos / 5) / (elapsed / 60)) or 0
-  local wpm = elapsed > 0 and ((correct / 5) / (elapsed / 60)) or 0
+  local gross_wpm = M.wpm_from(state.pos, elapsed)
+  local wpm = M.wpm_from(correct, elapsed)
   local score = math.floor(wpm * (accuracy / 100) * (efficiency / 100))
   local remaining_time = 0
   if state.timed_mode and state.timed_deadline then

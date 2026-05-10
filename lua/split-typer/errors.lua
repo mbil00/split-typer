@@ -1,5 +1,6 @@
 local storage = require("split-typer.storage")
 local words = require("split-typer.words")
+local ui_state = require("split-typer.ui.state")
 
 local M = {}
 
@@ -980,7 +981,7 @@ function M.get_session_decay(key_events)
     end
     local accuracy = (correct + mistakes) > 0 and (correct / (correct + mistakes) * 100) or 100
     local efficiency = (typed + backspaces) > 0 and (correct / (typed + backspaces) * 100) or 100
-    local wpm = elapsed > 0 and ((correct / 5) / (elapsed / 60)) or 0
+    local wpm = ui_state.wpm_from(correct, elapsed)
 
     return {
       typed = typed,
