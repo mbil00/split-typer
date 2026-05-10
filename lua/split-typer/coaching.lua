@@ -1,4 +1,5 @@
 local exercises = require("split-typer.exercises")
+local history_util = require("split-typer.history")
 local storage = require("split-typer.storage")
 
 local M = {}
@@ -61,7 +62,7 @@ end
 local function summarize_profile(history, profile)
   local items = {}
   for _, item in ipairs(history) do
-    if M.history_category_profile(item.category) == profile then
+    if history_util.category_profile(item.category) == profile then
       items[#items + 1] = item
     end
   end
@@ -266,7 +267,7 @@ end
 
 local function build_profile_recommendation(opts, profiles)
   local stats = opts.stats
-  local profile = M.history_category_profile(opts.category_id)
+  local profile = history_util.category_profile(opts.category_id)
   local correction_gap = (stats.corrected_accuracy or 100) - (stats.uncorrected_accuracy or stats.accuracy or 100)
   local hesitation_rate = stats.hesitations_per_100_chars or 0
   local avg_pause = stats.avg_hesitation_ms or 0
@@ -362,53 +363,6 @@ local function build_profile_recommendation(opts, profiles)
   }
 end
 
-function M.history_category_profile(category_id)
-  if not category_id or #category_id == 0 then
-    return "other"
-  end
-
-  if category_id == "prose" then
-    return "prose"
-  end
-
-  if category_id:match("^code_") or category_id == "mixed" then
-    return "code"
-  end
-
-  if category_id:match("^course_")
-    or category_id == "targeted_practice"
-    or category_id == "transition_practice"
-    or category_id == "course_transition_reinforcement"
-    or category_id:match("^timed_")
-  then
-    return "drill"
-  end
-
-  local cat = exercises.get_category(category_id)
-  if cat then
-    if cat.group == "code_prose" then
-      return cat.id == "prose" and "prose" or "code"
-    end
-    if cat.group == "advanced" then
-      if cat.id == "advanced_prose_fluency" then
-        return "prose"
-      end
-      if cat.id == "advanced_code_punctuation"
-        or cat.id == "advanced_shell_cli"
-        or cat.id == "advanced_delimiters"
-      then
-        return "code"
-      end
-      return "drill"
-    end
-    if cat.group == "general" or cat.group == "characters" or cat.group == "fingers" or cat.group == "custom" then
-      return "drill"
-    end
-  end
-
-  return "other"
-end
-
 function M.get_course_phase(course, level_id, stage)
   local level_prog = course.get_level_progress(level_id)
   if level_prog.validated and level_id >= #course.levels then
@@ -476,7 +430,7 @@ function M.build_session_coaching(opts)
     phase = "Automaticity"
     context = "Timed session"
   else
-    local profile = M.history_category_profile(opts.category_id)
+    local profile = history_util.category_profile(opts.category_id)
     if profile == "code" or profile == "prose" then
       phase = "Transfer"
     elseif profile == "drill" then
@@ -496,7 +450,7 @@ function M.build_session_coaching(opts)
     recommendation = build_timed_recommendation(opts)
   else
     local profiles = history_context()
-    if M.history_category_profile(opts.category_id) == "drill" and (profiles.prose or profiles.code) then
+    if history_util.category_profile(opts.category_id) == "drill" and (profiles.prose or profiles.code) then
       phase = "Transfer"
     end
     recommendation = build_profile_recommendation(opts, profiles)

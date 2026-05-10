@@ -1,5 +1,6 @@
 local benchmarks = require("split-typer.benchmarks")
 local errors = require("split-typer.errors")
+local history_util = require("split-typer.history")
 local storage = require("split-typer.storage")
 
 local M = {}
@@ -50,14 +51,6 @@ local function is_typing_history_item(item)
   return true
 end
 
-local function history_uncorrected_accuracy(item)
-  return item.uncorrected_accuracy or item.accuracy or 0
-end
-
-local function history_corrected_accuracy(item)
-  return item.corrected_accuracy or item.efficiency or item.accuracy or 0
-end
-
 local function history_backspaces_per_100(item)
   if item.backspaces_per_100_chars ~= nil then
     return item.backspaces_per_100_chars
@@ -71,53 +64,6 @@ end
 
 local function history_hesitations_per_100(item)
   return item.hesitations_per_100_chars
-end
-
-local function history_category_profile(category_id)
-  if not category_id or #category_id == 0 then
-    return "other"
-  end
-
-  if category_id == "prose" then
-    return "prose"
-  end
-
-  if category_id:match("^code_") or category_id == "mixed" then
-    return "code"
-  end
-
-  if category_id:match("^course_")
-    or category_id == "targeted_practice"
-    or category_id == "transition_practice"
-    or category_id == "course_transition_reinforcement"
-  then
-    return "drill"
-  end
-
-  local exercises = require("split-typer.exercises")
-  local cat = exercises.get_category(category_id)
-  if cat then
-    if cat.group == "code_prose" then
-      return cat.id == "prose" and "prose" or "code"
-    end
-    if cat.group == "advanced" then
-      if cat.id == "advanced_prose_fluency" then
-        return "prose"
-      end
-      if cat.id == "advanced_code_punctuation"
-        or cat.id == "advanced_shell_cli"
-        or cat.id == "advanced_delimiters"
-      then
-        return "code"
-      end
-      return "drill"
-    end
-    if cat.group == "general" or cat.group == "characters" or cat.group == "fingers" or cat.group == "custom" then
-      return "drill"
-    end
-  end
-
-  return "other"
 end
 
 local function average(values)
@@ -141,7 +87,7 @@ end
 local function summarize_profile(history, profile)
   local items = {}
   for _, item in ipairs(history) do
-    if history_category_profile(item.category) == profile then
+    if history_util.category_profile(item.category) == profile then
       items[#items + 1] = item
     end
   end
@@ -155,8 +101,8 @@ local function summarize_profile(history, profile)
   local backspace_values = {}
   for _, item in ipairs(items) do
     wpm_values[#wpm_values + 1] = item.wpm or 0
-    uncorrected_values[#uncorrected_values + 1] = history_uncorrected_accuracy(item)
-    corrected_values[#corrected_values + 1] = history_corrected_accuracy(item)
+    uncorrected_values[#uncorrected_values + 1] = history_util.uncorrected_accuracy(item)
+    corrected_values[#corrected_values + 1] = history_util.corrected_accuracy(item)
     backspace_values[#backspace_values + 1] = history_backspaces_per_100(item)
   end
 
@@ -348,8 +294,8 @@ function M.render(buf, ns, win, opts)
     if is_typing_history_item(h) then
       typing_history[#typing_history + 1] = h
       wpm_sum = wpm_sum + (h.wpm or h.speed or 0)
-      uncorrected_acc_sum = uncorrected_acc_sum + history_uncorrected_accuracy(h)
-      corrected_acc_sum = corrected_acc_sum + history_corrected_accuracy(h)
+      uncorrected_acc_sum = uncorrected_acc_sum + history_util.uncorrected_accuracy(h)
+      corrected_acc_sum = corrected_acc_sum + history_util.corrected_accuracy(h)
       backspace_rate_sum = backspace_rate_sum + history_backspaces_per_100(h)
       if history_hesitations_per_100(h) ~= nil then
         hesitation_rate_sum = hesitation_rate_sum + history_hesitations_per_100(h)
@@ -422,7 +368,7 @@ function M.render(buf, ns, win, opts)
 
     local acc_values = {}
     for i = #typing_history - last_n + 1, #typing_history do
-      acc_values[#acc_values + 1] = history_uncorrected_accuracy(typing_history[i])
+      acc_values[#acc_values + 1] = history_util.uncorrected_accuracy(typing_history[i])
     end
 
     local acc_lines, acc_hls = render_chart(acc_values, chart_width, 6, { good = 95, ok = 85 })
@@ -441,7 +387,7 @@ function M.render(buf, ns, win, opts)
     local backspace_values = {}
     local hesitation_values = {}
     for i = #typing_history - last_n + 1, #typing_history do
-      corrected_values[#corrected_values + 1] = history_corrected_accuracy(typing_history[i])
+      corrected_values[#corrected_values + 1] = history_util.corrected_accuracy(typing_history[i])
       backspace_values[#backspace_values + 1] = history_backspaces_per_100(typing_history[i])
       if history_hesitations_per_100(typing_history[i]) ~= nil then
         hesitation_values[#hesitation_values + 1] = history_hesitations_per_100(typing_history[i])
